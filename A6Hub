@@ -1,21 +1,22 @@
--- Language: Lua | Delta-confirmed | Steal an Egg v2
--- GUI: gethui() | No keypress/VIM | ProximityPrompt + Remote only
+-- Language: Lua | Delta loadstring confirmed | Steal an Egg v2
+-- Compat: Delta · Synapse X · KRNL · Fluxus · Hydrogen
 
 -- ══════════════════════════════════════════
 -- [1] COMPAT
 -- ══════════════════════════════════════════
+local gethui              = gethui              or function() return game:GetService("CoreGui") end
+local fireproximityprompt = fireproximityprompt or function(pp) pcall(function() pp:InputHoldBegin() end) end
+local firetouchinterest   = firetouchinterest   or function() end
+
 local function HttpRequest(data)
     local fn = (typeof(request)=="function" and request)
             or (syn and syn.request)
-            or (http and http.request)
-            or nil
+            or (http and http.request) or nil
     if fn then pcall(fn, data) end
 end
 
-local _fpp = fireproximityprompt or function(pp)
-    pcall(function() pp:InputHoldBegin() end)
-end
-local _fti = firetouchinterest or function() end
+local _fpp = fireproximityprompt
+local _fti = firetouchinterest
 
 -- ══════════════════════════════════════════
 -- [2] SERVICES
@@ -30,34 +31,33 @@ local lp   = Players.LocalPlayer
 local char = lp.Character or lp.CharacterAdded:Wait()
 local hrp  = char:WaitForChild("HumanoidRootPart")
 local hum  = char:WaitForChild("Humanoid")
-
 local isMobile = UIS.TouchEnabled
 
 -- ══════════════════════════════════════════
 -- [3] CONFIG
 -- ══════════════════════════════════════════
 local Cfg = {
-    AutoStealEggs      = false,
-    AutoFarm           = false,
-    AutoBoss           = false,
+    AutoStealEggs     = false,
+    AutoFarm          = false,
+    AutoBoss          = false,
 
-    WhitelistedPets    = {"Dragon","Phoenix","Legendary"},
-    BlacklistedPets    = {"Common","Uncommon"},
+    WhitelistedPets   = {"Dragon","Phoenix","Legendary"},
+    BlacklistedPets   = {"Common","Uncommon"},
 
-    BasePos            = Vector3.new(0,0,0),
-    BaseSet            = false,
+    BasePos           = Vector3.new(0,0,0),
+    BaseSet           = false,
 
-    StealRadius        = 80,
-    HoldDuration       = 1.3,
-    TeleportThreshold  = 45,
-    TeleportWaitMax    = 6,
-    LakeHoldDelay      = 0.25,
+    StealRadius       = 80,
+    HoldDuration      = 1.3,
+    TeleportThreshold = 45,
+    TeleportWaitMax   = 6,
+    LakeHoldDelay     = 0.25,
 
-    Webhook            = "https://discord.com/api/webhooks/YOUR_WEBHOOK_HERE",
+    Webhook           = "https://discord.com/api/webhooks/YOUR_WEBHOOK_HERE",
 
-    _bossSearching     = false,
-    _running           = true,
-    _cycleRunning      = false,
+    _bossSearching    = false,
+    _running          = true,
+    _cycleRunning     = false,
 }
 
 -- ══════════════════════════════════════════
@@ -96,7 +96,9 @@ local function RC()
     return hrp ~= nil and hum ~= nil
 end
 lp.CharacterAdded:Connect(function(c)
-    char=c; hrp=c:WaitForChild("HumanoidRootPart",10); hum=c:WaitForChild("Humanoid",10)
+    char = c
+    hrp  = c:WaitForChild("HumanoidRootPart", 10)
+    hum  = c:WaitForChild("Humanoid", 10)
 end)
 
 -- ══════════════════════════════════════════
@@ -131,7 +133,7 @@ end
 -- [7] PET FILTER
 -- ══════════════════════════════════════════
 local function Match(name, list)
-    for _,v in ipairs(list) do
+    for _, v in ipairs(list) do
         if name:lower():find(v:lower()) then return true end
     end
     return false
@@ -148,13 +150,13 @@ end
 local EggKW = {"egg","nest","hatch","spawn"}
 local function IsEgg(obj)
     local n = obj.Name:lower()
-    for _,kw in ipairs(EggKW) do if n:find(kw) then return true end end
+    for _, kw in ipairs(EggKW) do if n:find(kw) then return true end end
     return false
 end
 local function ObjPos(obj)
     if not obj or not obj.Parent then return nil end
     if obj:IsA("Model") then
-        local ok,p = pcall(function() return obj:GetPivot().Position end)
+        local ok, p = pcall(function() return obj:GetPivot().Position end)
         return ok and p or nil
     elseif obj:IsA("BasePart") then return obj.Position end
 end
@@ -163,10 +165,10 @@ local function GetTargetEgg(filtered)
     if not RC() then return nil end
     local best, bestD = nil, Cfg.StealRadius
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if not(obj:IsA("Model") or obj:IsA("BasePart")) then continue end
+        if not (obj:IsA("Model") or obj:IsA("BasePart")) then continue end
         if not IsEgg(obj) then continue end
         local ot = obj:FindFirstChild("Owner") or obj:FindFirstChild("PlayerName")
-        if ot and (ot.Value==lp.Name or ot.Value==lp.UserId) then continue end
+        if ot and (ot.Value == lp.Name or ot.Value == lp.UserId) then continue end
         if filtered and #Cfg.WhitelistedPets > 0 then
             local pn = obj.Name
             local pt = obj:FindFirstChild("PetType") or obj:FindFirstChild("PetName")
@@ -176,7 +178,7 @@ local function GetTargetEgg(filtered)
         local pos = ObjPos(obj)
         if not pos then continue end
         local d = (hrp.Position - pos).Magnitude
-        if d < bestD then best=obj; bestD=d end
+        if d < bestD then best = obj; bestD = d end
     end
     return best
 end
@@ -187,8 +189,8 @@ end
 local _rc = {}
 local function FindRemote(name)
     if _rc[name] and _rc[name].Parent then return _rc[name] end
-    local r = workspace:FindFirstChild(name,true) or RS:FindFirstChild(name,true)
-    if r then _rc[name]=r end
+    local r = workspace:FindFirstChild(name, true) or RS:FindFirstChild(name, true)
+    if r then _rc[name] = r end
     return r
 end
 
@@ -198,12 +200,11 @@ local StealRemotes = {
 }
 
 -- ══════════════════════════════════════════
--- [10] FIRE E  (Delta: no keypress/VIM)
+-- [10] FIRE E
 -- ══════════════════════════════════════════
 local function FireE(eggObj)
-    -- Priority 1: ProximityPrompt
     if eggObj and eggObj.Parent then
-        local pp = eggObj:FindFirstChildWhichIsA("ProximityPrompt",true)
+        local pp = eggObj:FindFirstChildWhichIsA("ProximityPrompt", true)
         if pp then
             local ht = (pp.HoldDuration or 0) + 0.25
             pcall(function() _fpp(pp) end)
@@ -211,8 +212,6 @@ local function FireE(eggObj)
             return true
         end
     end
-
-    -- Priority 2: Remote
     if eggObj then
         for _, rName in ipairs(StealRemotes) do
             local r = FindRemote(rName)
@@ -227,20 +226,17 @@ local function FireE(eggObj)
             end
         end
     end
-
-    -- Priority 3: TouchInterest
     if eggObj and char then
         local root = char:FindFirstChild("HumanoidRootPart")
         if root then
             local parts = eggObj:IsA("Model") and eggObj:GetDescendants() or {eggObj}
             for _, p in ipairs(parts) do
                 if p:IsA("BasePart") then
-                    pcall(function() _fti(root,p,0) end)
+                    pcall(function() _fti(root, p, 0) end)
                 end
             end
         end
     end
-
     task.wait(Cfg.HoldDuration)
     return false
 end
@@ -250,10 +246,11 @@ end
 -- ══════════════════════════════════════════
 local function WaitTele(timeout)
     if not hrp then return false end
-    local start = hrp.Position
+    local start   = hrp.Position
     local elapsed = 0
     while elapsed < timeout do
-        task.wait(0.05); elapsed += 0.05
+        task.wait(0.05)
+        elapsed = elapsed + 0.05  -- fix: no += 
         if not hrp or not hrp.Parent then return false end
         if (hrp.Position - start).Magnitude > Cfg.TeleportThreshold then
             return true
@@ -268,23 +265,14 @@ end
 local function StealCycle()
     if Cfg._cycleRunning then return end
     Cfg._cycleRunning = true
-
     local egg = GetTargetEgg(true)
-    if not egg then Cfg._cycleRunning=false; return end
-
+    if not egg then Cfg._cycleRunning = false; return end
     local pos = ObjPos(egg)
-    if not pos then Cfg._cycleRunning=false; return end
-
-    -- Walk to egg
+    if not pos then Cfg._cycleRunning = false; return end
     MoveTo(pos, 5)
-    if not egg.Parent then Cfg._cycleRunning=false; return end
-
-    -- Hold E
+    if not egg.Parent then Cfg._cycleRunning = false; return end
     task.spawn(function() FireE(egg) end)
-
-    -- Wait for game teleport
     local teleported = WaitTele(Cfg.TeleportWaitMax)
-
     if teleported then
         task.wait(Cfg.LakeHoldDelay)
         local lakeEgg = GetTargetEgg(false)
@@ -294,7 +282,6 @@ local function StealCycle()
     else
         Hook("🥚 Grabbed","Direct collect",0xF1C40F)
     end
-
     if Cfg.BaseSet then MoveTo(Cfg.BasePos, 6) end
     Cfg._cycleRunning = false
 end
@@ -306,10 +293,10 @@ local BossKW = {"cramble","dr.cramble","drcramble","boss"}
 local AtkR   = {"AttackBoss","DamageBoss","HitBoss","Attack","Damage","Strike"}
 
 local function FindBoss()
-    for _,obj in ipairs(workspace:GetDescendants()) do
+    for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") or obj:IsA("BasePart") then
             local n = obj.Name:lower()
-            for _,kw in ipairs(BossKW) do if n:find(kw) then return obj end end
+            for _, kw in ipairs(BossKW) do if n:find(kw) then return obj end end
         end
     end
 end
@@ -321,25 +308,25 @@ local function FarmBoss()
     local boss = FindBoss()
     if not boss then
         Hook("⚠️ Boss","Not found",0xF39C12)
-        Cfg._bossSearching=false; return
+        Cfg._bossSearching = false; return
     end
     local bp = ObjPos(boss)
     if bp then MoveTo(bp) end
     local atk
-    for _,rn in ipairs(AtkR) do
-        local r = FindRemote(rn); if r then atk=r; break end
+    for _, rn in ipairs(AtkR) do
+        local r = FindRemote(rn); if r then atk = r; break end
     end
-    local dl = tick()+240
-    while Cfg.AutoBoss and Cfg._running and boss and boss.Parent and tick()<dl do
-        local hpObj = boss:FindFirstChildWhichIsA("Humanoid",true)
-        if hpObj and hpObj.Health<=0 then break end
+    local dl = tick() + 240
+    while Cfg.AutoBoss and Cfg._running and boss and boss.Parent and tick() < dl do
+        local hpObj = boss:FindFirstChildWhichIsA("Humanoid", true)
+        if hpObj and hpObj.Health <= 0 then break end
         local p = ObjPos(boss)
-        if p and hrp and (hrp.Position-p).Magnitude>12 then MoveTo(p) end
+        if p and hrp and (hrp.Position - p).Magnitude > 12 then MoveTo(p) end
         if atk then
             if atk:IsA("RemoteEvent") then pcall(function() atk:FireServer(boss) end)
             else pcall(function() atk:InvokeServer(boss) end) end
         end
-        local pp = boss:FindFirstChildWhichIsA("ProximityPrompt",true)
+        local pp = boss:FindFirstChildWhichIsA("ProximityPrompt", true)
         if pp then pcall(function() _fpp(pp) end) end
         task.wait(0.2)
     end
@@ -362,7 +349,7 @@ end)
 task.spawn(function()
     while Cfg._running do
         task.wait(0.6)
-        if not(Cfg.AutoStealEggs or Cfg.AutoFarm) then continue end
+        if not (Cfg.AutoStealEggs or Cfg.AutoFarm) then continue end
         if Cfg._cycleRunning then continue end
         if not RC() then task.wait(1); continue end
         pcall(StealCycle)
@@ -370,34 +357,26 @@ task.spawn(function()
 end)
 
 -- ══════════════════════════════════════════
--- [15] UI — gethui() confirmed for Delta
+-- [15] UI
 -- ══════════════════════════════════════════
-
--- Cleanup
 pcall(function()
-    if gethui then
-        local old = gethui():FindFirstChild("_SEggUI")
-        if old then old:Destroy() end
-    end
-    local old2 = lp.PlayerGui:FindFirstChild("_SEggUI")
-    if old2 then old2:Destroy() end
+    local h = gethui()
+    local old = h:FindFirstChild("_SEggUI")
+    if old then old:Destroy() end
+end)
+pcall(function()
+    local old = lp.PlayerGui:FindFirstChild("_SEggUI")
+    if old then old:Destroy() end
 end)
 
 local SG = Instance.new("ScreenGui")
 SG.Name           = "_SEggUI"
 SG.ResetOnSpawn   = false
 SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
--- ★ Delta fix: gethui() trực tiếp
-if gethui then
-    SG.Parent = gethui()
-else
-    local ok = pcall(function() SG.Parent = game:GetService("CoreGui") end)
-    if not ok then SG.Parent = lp.PlayerGui end
-end
+SG.Parent         = gethui()
 
 local S = isMobile and 1.2 or 1.0
-local function Px(n) return math.floor(n*S) end
+local function Px(n) return math.floor(n * S) end
 
 local C = {
     bg      = Color3.fromRGB(11,11,17),
@@ -413,56 +392,49 @@ local C = {
 }
 
 local function Corner(p,r)
-    local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 8); c.Parent=p
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,r or 8); c.Parent = p
 end
 local function Pad(p,l,r,t,b)
-    local u=Instance.new("UIPadding")
+    local u = Instance.new("UIPadding")
     u.PaddingLeft=UDim.new(0,l); u.PaddingRight=UDim.new(0,r)
     u.PaddingTop=UDim.new(0,t); u.PaddingBottom=UDim.new(0,b)
-    u.Parent=p
+    u.Parent = p
 end
 local function Stroke(p,col,th)
-    local s=Instance.new("UIStroke"); s.Color=col or C.accent; s.Thickness=th or 1; s.Parent=p
+    local s = Instance.new("UIStroke"); s.Color=col or C.accent; s.Thickness=th or 1; s.Parent=p
 end
 local function Lbl(parent,props)
-    local l=Instance.new("TextLabel")
+    local l = Instance.new("TextLabel")
     for k,v in pairs(props) do l[k]=v end
     l.BackgroundTransparency=1; l.Parent=parent; return l
 end
 
 local WW,WH = Px(370),Px(590)
 local Win = Instance.new("Frame")
-Win.Size             = UDim2.new(0,WW,0,WH)
-Win.Position         = UDim2.new(0.5,-WW/2,0.5,-WH/2)
-Win.BackgroundColor3 = C.bg
-Win.BorderSizePixel  = 0
-Win.Active           = true
-Win.Draggable        = true
-Win.ClipsDescendants = true
-Win.Visible          = true
-Win.Parent           = SG
-Corner(Win,12)
-Stroke(Win,C.accent,1.5)
+Win.Size=UDim2.new(0,WW,0,WH)
+Win.Position=UDim2.new(0.5,-WW/2,0.5,-WH/2)
+Win.BackgroundColor3=C.bg
+Win.BorderSizePixel=0
+Win.Active=true; Win.Draggable=true
+Win.ClipsDescendants=true; Win.Visible=true
+Win.Parent=SG
+Corner(Win,12); Stroke(Win,C.accent,1.5)
 
--- Top bar
-local TopBar = Instance.new("Frame")
+local TopBar=Instance.new("Frame")
 TopBar.Size=UDim2.new(1,0,0,Px(46))
 TopBar.BackgroundColor3=C.surface
-TopBar.BorderSizePixel=0
-TopBar.Parent=Win
+TopBar.BorderSizePixel=0; TopBar.Parent=Win
 
 local TBFix=Instance.new("Frame")
 TBFix.Size=UDim2.new(1,0,0,10)
 TBFix.Position=UDim2.new(0,0,1,-10)
 TBFix.BackgroundColor3=C.surface
-TBFix.BorderSizePixel=0
-TBFix.Parent=TopBar
+TBFix.BorderSizePixel=0; TBFix.Parent=TopBar
 
 local ALine=Instance.new("Frame")
 ALine.Size=UDim2.new(1,0,0,3)
 ALine.BackgroundColor3=C.accent
-ALine.BorderSizePixel=0
-ALine.Parent=Win
+ALine.BorderSizePixel=0; ALine.Parent=Win
 
 Lbl(TopBar,{
     Size=UDim2.new(1,-Px(80),1,0),
@@ -482,7 +454,6 @@ HideBtn.TextSize=Px(14); HideBtn.Font=Enum.Font.GothamBold
 HideBtn.BorderSizePixel=0; HideBtn.Parent=TopBar
 Corner(HideBtn,6)
 
--- Scroll
 local Scroll=Instance.new("ScrollingFrame")
 Scroll.Size=UDim2.new(1,0,1,-Px(50))
 Scroll.Position=UDim2.new(0,0,0,Px(50))
@@ -501,46 +472,28 @@ LL.Padding=UDim.new(0,Px(7))
 LL.SortOrder=Enum.SortOrder.LayoutOrder
 LL.Parent=Scroll
 
--- Section
 local function Section(text)
     local f=Instance.new("Frame",Scroll)
-    f.Size=UDim2.new(1,0,0,Px(28))
-    f.BackgroundTransparency=1
-    Lbl(f,{
-        Size=UDim2.new(1,0,1,0),
-        Text=text, TextColor3=C.accent,
-        TextSize=Px(11), Font=Enum.Font.GothamBold,
-        TextXAlignment=Enum.TextXAlignment.Left,
-    })
+    f.Size=UDim2.new(1,0,0,Px(28)); f.BackgroundTransparency=1
+    Lbl(f,{Size=UDim2.new(1,0,1,0),Text=text,TextColor3=C.accent,
+        TextSize=Px(11),Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Left})
 end
 
--- Toggle
 local function Toggle(label,icon,cfgKey,cb)
     local row=Instance.new("Frame",Scroll)
     row.Size=UDim2.new(1,0,0,Px(46))
-    row.BackgroundColor3=C.card
-    row.BorderSizePixel=0
-    Corner(row,8)
-    Lbl(row,{
-        Size=UDim2.new(0,Px(30),1,0),
-        Position=UDim2.new(0,Px(8),0,0),
-        Text=icon, TextSize=Px(18),
-        Font=Enum.Font.GothamBold,
-        TextXAlignment=Enum.TextXAlignment.Center,
-    })
-    Lbl(row,{
-        Size=UDim2.new(1,-Px(98),1,0),
-        Position=UDim2.new(0,Px(42),0,0),
-        Text=label, TextColor3=C.text,
-        TextSize=Px(13), Font=Enum.Font.Gotham,
-        TextXAlignment=Enum.TextXAlignment.Left,
-    })
+    row.BackgroundColor3=C.card; row.BorderSizePixel=0; Corner(row,8)
+    Lbl(row,{Size=UDim2.new(0,Px(30),1,0),Position=UDim2.new(0,Px(8),0,0),
+        Text=icon,TextSize=Px(18),Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Center})
+    Lbl(row,{Size=UDim2.new(1,-Px(98),1,0),Position=UDim2.new(0,Px(42),0,0),
+        Text=label,TextColor3=C.text,TextSize=Px(13),Font=Enum.Font.Gotham,
+        TextXAlignment=Enum.TextXAlignment.Left})
     local pill=Instance.new("TextButton",row)
     pill.Size=UDim2.new(0,Px(54),0,Px(26))
     pill.Position=UDim2.new(1,-Px(62),0.5,-Px(13))
-    pill.BorderSizePixel=0
-    pill.Font=Enum.Font.GothamBold
-    pill.TextSize=Px(11)
+    pill.BorderSizePixel=0; pill.Font=Enum.Font.GothamBold; pill.TextSize=Px(11)
     Corner(pill,Px(13))
     local function Ref()
         local on=Cfg[cfgKey]
@@ -555,20 +508,13 @@ local function Toggle(label,icon,cfgKey,cb)
     end)
 end
 
--- TextInput
 local function TextInput(label,default,ph,onDone)
     local row=Instance.new("Frame",Scroll)
     row.Size=UDim2.new(1,0,0,Px(65))
-    row.BackgroundColor3=C.card
-    row.BorderSizePixel=0
-    Corner(row,8)
-    Lbl(row,{
-        Size=UDim2.new(1,-Px(12),0,Px(22)),
-        Position=UDim2.new(0,Px(10),0,Px(5)),
-        Text=label, TextColor3=C.sub,
-        TextSize=Px(11), Font=Enum.Font.Gotham,
-        TextXAlignment=Enum.TextXAlignment.Left,
-    })
+    row.BackgroundColor3=C.card; row.BorderSizePixel=0; Corner(row,8)
+    Lbl(row,{Size=UDim2.new(1,-Px(12),0,Px(22)),Position=UDim2.new(0,Px(10),0,Px(5)),
+        Text=label,TextColor3=C.sub,TextSize=Px(11),Font=Enum.Font.Gotham,
+        TextXAlignment=Enum.TextXAlignment.Left})
     local box=Instance.new("TextBox",row)
     box.Size=UDim2.new(1,-Px(20),0,Px(30))
     box.Position=UDim2.new(0,Px(10),0,Px(28))
@@ -583,7 +529,6 @@ local function TextInput(label,default,ph,onDone)
     return box
 end
 
--- NumInput
 local function NumInput(label,default,mn,mx,onDone)
     TextInput(label,tostring(default),tostring(default),function(v)
         local n=tonumber(v)
@@ -595,22 +540,16 @@ local function NumInput(label,default,mn,mx,onDone)
     end)
 end
 
--- PetList
 local function PetList(isWhite)
     local key=isWhite and "WhitelistedPets" or "BlacklistedPets"
     local color=isWhite and C.green or C.red
     local label=isWhite and "✅  Whitelist (comma sep)" or "❌  Blacklist (comma sep)"
     local row=Instance.new("Frame",Scroll)
     row.Size=UDim2.new(1,0,0,Px(82))
-    row.BackgroundColor3=C.card; row.BorderSizePixel=0
-    Corner(row,8)
-    Lbl(row,{
-        Size=UDim2.new(1,-Px(12),0,Px(22)),
-        Position=UDim2.new(0,Px(10),0,Px(5)),
-        Text=label, TextColor3=color,
-        TextSize=Px(11), Font=Enum.Font.GothamBold,
-        TextXAlignment=Enum.TextXAlignment.Left,
-    })
+    row.BackgroundColor3=C.card; row.BorderSizePixel=0; Corner(row,8)
+    Lbl(row,{Size=UDim2.new(1,-Px(12),0,Px(22)),Position=UDim2.new(0,Px(10),0,Px(5)),
+        Text=label,TextColor3=color,TextSize=Px(11),Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Left})
     local box=Instance.new("TextBox",row)
     box.Size=UDim2.new(1,-Px(20),0,Px(48))
     box.Position=UDim2.new(0,Px(10),0,Px(28))
@@ -618,7 +557,7 @@ local function PetList(isWhite)
     box.Text=table.concat(Cfg[key],", ")
     box.TextColor3=color; box.PlaceholderColor3=C.sub
     box.TextSize=Px(11); box.Font=Enum.Font.Gotham
-  box.BorderSizePixel=0; box.MultiLine=true
+    box.BorderSizePixel=0; box.MultiLine=true
     box.TextWrapped=true; box.ClearTextOnFocus=false
     box.TextXAlignment=Enum.TextXAlignment.Left
     box.TextYAlignment=Enum.TextYAlignment.Top
@@ -629,41 +568,29 @@ local function PetList(isWhite)
             local s=part:match("^%s*(.-)%s*$")
             if s~="" then table.insert(out,s) end
         end
-        Cfg[key]=out
+Cfg[key]=out
     end)
 end
 
--- PosBtn
 local function PosBtn(label,icon,color,onClick)
     local row=Instance.new("Frame",Scroll)
     row.Size=UDim2.new(1,0,0,Px(46))
-    row.BackgroundColor3=C.card; row.BorderSizePixel=0
-    Corner(row,8)
-    Lbl(row,{
-        Size=UDim2.new(0,Px(28),1,0),
-        Position=UDim2.new(0,Px(10),0,0),
-        Text=icon, TextSize=Px(18),
-        Font=Enum.Font.GothamBold,
-        TextXAlignment=Enum.TextXAlignment.Center,
-    })
+    row.BackgroundColor3=C.card; row.BorderSizePixel=0; Corner(row,8)
+    Lbl(row,{Size=UDim2.new(0,Px(28),1,0),Position=UDim2.new(0,Px(10),0,0),
+        Text=icon,TextSize=Px(18),Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Center})
     local statusLbl=Lbl(row,{
-        Size=UDim2.new(1,-Px(170),1,0),
-        Position=UDim2.new(0,Px(42),0,0),
-        Text=label, TextColor3=C.text,
-        TextSize=Px(12), Font=Enum.Font.Gotham,
-        TextXAlignment=Enum.TextXAlignment.Left,
-    })
+        Size=UDim2.new(1,-Px(170),1,0),Position=UDim2.new(0,Px(42),0,0),
+        Text=label,TextColor3=C.text,TextSize=Px(12),Font=Enum.Font.Gotham,
+        TextXAlignment=Enum.TextXAlignment.Left})
     local btn=Instance.new("TextButton",row)
     btn.Size=UDim2.new(0,Px(90),0,Px(28))
     btn.Position=UDim2.new(1,-Px(98),0.5,-Px(14))
     btn.BackgroundColor3=color or C.blue
     btn.Text="Set Here"; btn.TextColor3=C.bg
-    btn.TextSize=Px(11); btn.Font=Enum.Font.GothamBold
-    btn.BorderSizePixel=0
+    btn.TextSize=Px(11); btn.Font=Enum.Font.GothamBold; btn.BorderSizePixel=0
     Corner(btn,7)
-    btn.MouseButton1Click:Connect(function()
-        if onClick then onClick(statusLbl,btn) end
-    end)
+    btn.MouseButton1Click:Connect(function() if onClick then onClick(statusLbl,btn) end end)
 end
 
 -- ══════════════════════════════════════════
@@ -679,10 +606,8 @@ Section("  📍  POSITIONS")
 PosBtn("Base Position","🏠",C.green,function(lbl,btn)
     if not RC() then return end
     Cfg.BasePos=hrp.Position; Cfg.BaseSet=true
-    lbl.Text="✓ Base saved"
-    lbl.TextColor3=C.green
-    btn.Text="✓ Done"
-    btn.BackgroundColor3=C.green
+    lbl.Text="✓ Base saved"; lbl.TextColor3=C.green
+    btn.Text="✓ Done"; btn.BackgroundColor3=C.green
     Hook("📍 Base","X:"..math.floor(Cfg.BasePos.X).." Z:"..math.floor(Cfg.BasePos.Z),0x3498DB)
 end)
 
@@ -730,5 +655,5 @@ end)
 -- ══════════════════════════════════════════
 -- [18] DONE
 -- ══════════════════════════════════════════
-print("[StealEgg v2] GUI loaded via "..(gethui and "gethui()" or "fallback"))
-Hook("🚀 Loaded","**v2 ready** | "..(isMobi
+print("[StealEgg v2] loaded — "..tostring(gethui()))
+Hook("🚀 Loaded","**v2 ready** | "..(isMobile and "Mobile" or "Desktop"),0x3498DB)
