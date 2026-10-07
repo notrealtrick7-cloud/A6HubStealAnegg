@@ -1,0 +1,309 @@
+-- ===== PATCH: Fix treadmill interrupt + tpBase đúng plot =====
+-- Chạy SAU script gốc (và các patch trước nếu có).
+
+local S = getgenv().A6SAE
+if not S then warn("[A6 PATCH FIX] Load script gốc trước!") return end
+
+local Players  = game:GetService("Players")
+local LP       = Players.LocalPlayer
+
+-- =========================================================
+-- UTIL: Tìm part/model gần nhất với một vị trí
+-- =========================================================
+local function distTo(part, pos)
+    local p = part:IsA("BasePart") and part.Position
+        or (part.PrimaryPart and part.PrimaryPart.Position)
+        or (part:FindFirstChildWhichIsA("BasePart") and part:FindFirstChildWhichIsA("BasePart").Position)
+    if not p then return math.huge end
+    return (p - pos).Magnitude
+end
+
+-- =========================================================
+-- FIX CORE: Tìm object thuộc về MÌNH
+-- Steal an Egg thường đặt plot trong model tên chứa username
+-- hoặc trong một folder/model parent chứa tên mình
+-- =========================================================
+local function isOwnedByMe(obj)
+    -- đi lên cây cho đến workspace, tìm xem có node nào chứa tên mình không
+    local name = LP.Name:lower()
+    local cur = obj
+    local depth = 0
+    while cur and cur ~= workspace and depth < 8 do
+        local n = cur.Name:lower()
+        if n:find(name, 1, true) then return true end
+        -- Attribute check
+        local owner = cur:GetAttribute("Owner") or cur:GetAttribute("PlayerName") or cur:GetAttribute("UserId")
+        if owner then
+            if tostring(owner):lower() == name or tostring(owner) == tostring(LP.UserId) then
+                return true
+            end
+        end
+        cur = cur.Parent
+        depth = depth + 1
+    end
+    return false
+end
+
+-- =========================================================
+-- FIX 1: tpBase — ưu tiên plot/base của mình
+-- Logic: tìm tất cả candidates → filter isOwnedByMe → lấy gần nhất
+--        Nếu không tìm được plot của mình → fallback về gần player nhất
+-- =========================================================
+local BASE_NAMES = {"Base","Plot","Home","Pen","Spawn","BasePlot","SafeZone","SAFE","MyPlot","PlayerPlot"}
+
+local function findMyBase()
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    local pos = root and root.Position or Vector3.new(0,0,0)
+
+    local candidates = {}
+
+    -- Pass 1: tìm tất cả objects khớp tên base
+    for _, name in ipairs(BASE_NAMES) do
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name:lower():find(name:lower(), 1, true) then
+                if obj:IsA("BasePart") or obj:IsA("Model") then
+                    local part = obj:IsA("BasePart") and obj or (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart"))
+                    if part then
+                        table.insert(candidates, {obj=obj, part=part, owned=isOwnedByMe(obj)})
+                    end
+                end
+            end
+        end
+    end
+
+    if #candidates == 0 then return nil end
+
+    -- Pass 2: ưu tiên owned=true, sau đó gần nhất
+    local owned, any = {}, {}
+    for _, c in ipairs(candidates) do
+        if c.owned then table.insert(owned, c) end
+        table.insert(any, c)
+    end
+
+    local pool = #owned > 0 and owned or any
+    -- sort theo khoảng cách
+    table.sort(pool, function(a, b)
+        return distTo(a.part, pos) < distTo(b.part, pos)
+    end)
+
+    return pool[1] and pool[1].part or nil
+end
+
+-- Ghi đè tpBase toàn cục
+getgenv().tpBase = function()
+    local part = findMyBase()
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if part and root then
+        local pos = part.Position
+        -- dùng tweenTo_safe nếu đã patch, fallback về TweenService
+        if getgenv().tweenTo then
+            getgenv().tweenTo(CFrame.new(pos.X, root.Position.Y, pos.Z))
+        else
+            local TweenService = game:GetService("TweenService")
+            local t = TweenService:Create(root,
+                TweenInfo.new(2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {CFrame = CFrame.new(pos.X, root.Position.Y + 1, pos.Z)})
+            t:Play()
+            t.Completed:Wait()
+        end
+        return true
+    end
+    return false
+end
+
+-- =========================================================
+-- FIX 2: findMyTreadmill — treadmill trong plot của mình
+-- =========================================================
+local function findMyTreadmill()
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    local pos = root and root.Position or Vector3.new(0,0,0)
+
+    local candidates = {}
+    for _, v in ipairs(workspace:GetDescendants()) do
+        local n = v.Name:lower()
+        if n:find("treadmill") or n:find("tread") or n:find("runner") then
+            local part = v:IsA("BasePart") and v or (v:IsA("Model") and (v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")))
+            if part then
+                table.insert(candidates, {
+                    part = part,
+                    owned = isOwnedByMe(v),
+                    dist = distTo(part, pos)
+                })
+            end
+        end
+    end
+
+    if #candidates == 0 then return nil end
+
+    -- Ưu tiên treadmill owned, gần nhất
+    table.sort(candidates, function(a, b)
+        if a.owned ~= b.owned then return a.owned end -- owned first
+        return a.dist < b.dist
+    end)
+
+    return candidates[1].part
+end
+
+-- =========================================================
+-- FIX 3: farmTreadmill — check _Stealing trước khi di chuyển
+-- =========================================================
+getgenv().farmTreadmill = function()
+    -- QUAN TRỌNG: không farm treadmill khi đang steal
+    if S._Stealing then return end
+
+    local tm = findMyTreadmill()
+    if not tm then return end
+
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    -- Nếu đang gần treadmill rồi (< 10 studs) thì không cần walkTo nữa
+    local dist = (root.Position - tm.Position).Magnitude
+    if dist > 10 then
+        -- walkTo nhưng với _Stealing guard
+        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            local goal = Vector3.new(tm.Position.X, root.Position.Y, tm.Position.Z)
+            pcall(function() hum.WalkSpeed = math.clamp(S.StealWalkSpeed or 28, 16, 60) end)
+            pcall(function() hum:MoveTo(goal) end)
+            local t0 = tick()
+            while tick() - t0 < 12 do
+                if S._Stealing then return end -- abort nếu steal bắt đầu
+                root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                if not root then return end
+                local d = (Vector3.new(root.Position.X,0,root.Position.Z) - Vector3.new(goal.X,0,goal.Z)).Magnitude
+                if d < 5 then break end
+                task.wait(0.15)
+            end
+        end
+    end
+
+    -- Walk in place trên treadmill (chỉ nếu không đang steal)
+    if not S._Stealing then
+        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.WalkSpeed = math.max(hum.WalkSpeed, 20)
+            pcall(function() hum:Move(Vector3.new(1, 0, 0), true) end)
+        end
+    end
+end
+
+-- =========================================================
+-- FIX 4: doStealOnce — set _Stealing TRƯỚC khi bất kỳ tween nào
+-- và clear treadmill move khi steal bắt đầu
+-- =========================================================
+-- Wrap doStealOnce để ensure _Stealing cản farmTreadmill
+local _origSteal = getgenv().doStealOnce
+if _origSteal then
+    getgenv().doStealOnce = function()
+        S._Stealing = true  -- set ngay lập tức trước khi gọi original
+        local result = _origSteal()
+        -- _origSteal tự clear _Stealing = false ở cuối
+        return result
+    end
+end
+
+-- =========================================================
+-- FIX 5: tpBase trong doStealOnce (LakeDrop + Direct paths)
+-- cả 2 path trong steal đều gọi tpBase → sẽ dùng version mới tự động
+-- Không cần patch thêm vì getgenv().tpBase đã được ghi đè ở Fix 1
+-- =========================================================
+
+-- =========================================================
+-- UI: Thêm nút "Set My Base" để người chơi pin vị trí base thủ công
+-- fallback an toàn nhất khi auto-detect sai
+-- =========================================================
+local function addSetBaseBtn()
+    local sg = game:GetService("CoreGui"):FindFirstChild("A6HubSAE")
+        or (LP:FindFirstChild("PlayerGui") and LP.PlayerGui:FindFirstChild("A6HubSAE"))
+    if not sg then return end
+
+    -- Tìm Settings page
+    local settingsPage
+    for _, obj in ipairs(sg:GetDescendants()) do
+        if obj:IsA("ScrollingFrame") then
+            for _, c in ipairs(obj:GetChildren()) do
+                if c:IsA("TextLabel") and (c.Text == "Auto Farm Settings" or c.Text:find("Settings")) then
+                    settingsPage = obj
+                    break
+                end
+            end
+        end
+        if settingsPage then break end
+    end
+    if not settingsPage then return end
+
+    -- Nút Set My Base (pin vị trí hiện tại)
+    local pinBtn = Instance.new("TextButton")
+    pinBtn.Parent = settingsPage
+    pinBtn.Size = UDim2.new(1, 0, 0, 30)
+    pinBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 120)
+    pinBtn.Font = Enum.Font.GothamBold
+    pinBtn.TextSize = 11
+    pinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    pinBtn.Text = "📍 Pin vị trí Base hiện tại"
+    Instance.new("UICorner", pinBtn).CornerRadius = UDim.new(0, 8)
+
+    pinBtn.MouseButton1Click:Connect(function()
+        local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if not root then
+            game:GetService("StarterGui"):SetCore("SendNotification", {Title="A6",Text="Không tìm thấy character!",Duration=2})
+            return
+        end
+        -- Lưu vị trí base thủ công
+        S.ManualBasePos = root.Position
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title="A6 Hub · Base Pinned",
+            Text=string.format("Base: %.1f, %.1f, %.1f", root.Position.X, root.Position.Y, root.Position.Z),
+            Duration=3
+        })
+        pinBtn.Text = string.format("📍 Pinned (%.0f, %.0f, %.0f)", root.Position.X, root.Position.Y, root.Position.Z)
+        pinBtn.BackgroundColor3 = Color3.fromRGB(20, 100, 60)
+    end)
+
+    -- Nút Clear Pin
+    local clearBtn = Instance.new("TextButton")
+    clearBtn.Parent = settingsPage
+    clearBtn.Size = UDim2.new(1, 0, 0, 26)
+    clearBtn.BackgroundColor3 = Color3.fromRGB(60, 40, 40)
+    clearBtn.Font = Enum.Font.Gotham
+    clearBtn.TextSize = 10
+    clearBtn.TextColor3 = Color3.fromRGB(200, 180, 180)
+    clearBtn.Text = "Clear pin base (dùng auto-detect)"
+    Instance.new("UICorner", clearBtn).CornerRadius = UDim.new(0, 8)
+    clearBtn.MouseButton1Click:Connect(function()
+        S.ManualBasePos = nil
+        pinBtn.Text = "📍 Pin vị trí Base hiện tại"
+        pinBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 120)
+        game:GetService("StarterGui"):SetCore("SendNotification", {Title="A6",Text="Manual base cleared",Duration=2})
+    end)
+end
+
+-- Override tpBase thêm 1 lần nữa để check ManualBasePos
+local _tpBase_v2 = getgenv().tpBase
+getgenv().tpBase = function()
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    -- Nếu đã pin thủ công → dùng luôn
+    if S.ManualBasePos and root then
+        local pos = S.ManualBasePos
+        if getgenv().tweenTo then
+            getgenv().tweenTo(CFrame.new(pos.X, root.Position.Y, pos.Z))
+        else
+            local TweenService = game:GetService("TweenService")
+            local t = TweenService:Create(root,
+                TweenInfo.new(2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {CFrame = CFrame.new(pos.X, root.Position.Y + 1, pos.Z)})
+            t:Play()
+            t.Completed:Wait()
+        end
+        return true
+    end
+    -- Fallback về auto-detect
+    return _tpBase_v2()
+end
+
+-- Delay nhỏ rồi thêm UI (đợi build() xong)
+task.delay(1.5, addSetBaseBtn)
+
+print("[A6 PATCH FIX] tpBase + treadmill + steal guard patched.")
+print("[A6 PATCH FIX] Dùng nút 'Pin vị trí Base' trong tab Settings nếu auto-detect vẫn sai.")
