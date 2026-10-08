@@ -1,0 +1,662 @@
+--[[
+    A6 Hub Â· Steal an Egg v3
+    AC Bypass Edition Â· Enchanted Forest Full Â· Whitelist/Blacklist Pet UI
+    Discord: https://discord.gg/ZkGwEUGJv
+
+    Thay Ä‘á»•i v3 vs v2:
+    - AC BYPASS: jitter timing ngáº«u nhiĂªn má»i action, khĂ´ng interval cá»‘ Ä‘á»‹nh
+    - humanoid.WalkSpeed noise Â±3 thay vĂ¬ set cá»©ng
+    - fireproximityprompt pre-delay random 0.08â€“0.28s
+    - Cache TTL 6s, khĂ´ng scan workspace liĂªn tá»¥c
+    - Shuffle egg list má»—i láº§n quĂ©t â†’ khĂ´ng luĂ´n nearest theo thá»© tá»± cá»‘ Ä‘á»‹nh
+    - Scheduler interval random [base*0.7, base*2.4]
+    - Enchanted Forest: 9 pet Ä‘áº§y Ä‘á»§ (Prism Geckoâ†’Ethereal Wisp) + tab riĂªng
+    - Pet WL/BL per-pet UI: group by biome, WL/BL button tá»«ng con
+    - FilterMode: Rarity | Pet | Both
+]]
+
+print("[A6 SAEv3] Loading ...")
+
+local Players   = game:GetService("Players")
+local TweenSvc  = game:GetService("TweenService")
+local RunSvc    = game:GetService("RunService")
+local UIS       = game:GetService("UserInputService")
+local TpSvc     = game:GetService("TeleportService")
+local HttpSvc   = game:GetService("HttpService")
+local VUser     = game:GetService("VirtualUser")
+local LP        = Players.LocalPlayer
+local DISCORD   = "https://discord.gg/ZkGwEUGJv"
+
+getgenv().A6SAEv3 = getgenv().A6SAEv3 or {}
+local S = getgenv().A6SAEv3
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  AC BYPASS CORE
+--  Má»i timing Ä‘i qua Ä‘Ă¢y â€” khĂ´ng cĂ³ constant interval nĂ o
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local function jitter(base, lo, hi)
+    lo = lo or -0.15; hi = hi or 0.15
+    return base + lo + math.random() * (hi - lo)
+end
+local function acWait(base)
+    task.wait(jitter(base, base * 0.3, base * 1.1))
+end
+local function acFirePrompt(prompt)
+    if not prompt then return end
+    task.wait(jitter(0.12, 0.04, 0.28))
+    pcall(function()
+        if fireproximityprompt then
+            fireproximityprompt(prompt)
+        else
+            prompt:InputHoldBegin()
+            task.wait(jitter(0.06, 0.03, 0.12))
+            prompt:InputHoldEnd()
+        end
+    end)
+    task.wait(jitter(0.08, 0.02, 0.18))
+end
+local function acWalkSpeed(hum, target)
+    if not hum then return end
+    local noise = math.random(-3, 3)
+    pcall(function() hum.WalkSpeed = math.clamp(target + noise, 14, 85) end)
+end
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  DEFAULTS
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+S.AutoSteal             = S.AutoSteal           or false
+S.StealMethod           = S.StealMethod         or "LakeDrop"
+S.AutoPlace             = S.AutoPlace           or false
+S.AutoHatch             = S.AutoHatch           or false
+S.AutoSell              = S.AutoSell            or false
+S.AutoMutation          = S.AutoMutation        or false
+S.AutoTreadmill         = S.AutoTreadmill       or false
+S.AutoUpgradeTreadmill  = S.AutoUpgradeTreadmill or false
+S.AutoUpgradePlot       = S.AutoUpgradePlot     or false
+S.AutoIndex             = S.AutoIndex           or false
+S.AutoScramble          = S.AutoScramble        or false
+S.EggESP                = S.EggESP              or false
+S.SpeedBoost            = S.SpeedBoost          or false
+S.JumpBoost             = S.JumpBoost           or false
+S.InfJump               = S.InfJump             or false
+S.AntiRagdoll           = S.AntiRagdoll         or false
+S.AntiAFK               = S.AntiAFK             or false
+S.WalkSpeed             = S.WalkSpeed           or 28
+S.JumpPower             = S.JumpPower           or 50
+S.StealDelay            = S.StealDelay          or 1.4
+S.TweenSpeed            = S.TweenSpeed          or 40
+S.StealWalkSpeed        = S.StealWalkSpeed      or 22
+S.MoveStyle             = S.MoveStyle           or "Walk"
+S.WebhookURL            = S.WebhookURL          or ""
+S.WebhookOnSteal        = S.WebhookOnSteal      or false
+S.WebhookOnRare         = S.WebhookOnRare       or true
+S.FilterMode            = S.FilterMode          or "Rarity"
+
+S.Rarities  = {"Common","Uncommon","Rare","Epic","Legendary","Mythic","Cosmic","Secret","Eternal","Divine"}
+S.RarityTier = {
+    Common=1,Uncommon=2,Rare=3,Epic=4,Legendary=5,
+    Mythic=6,Cosmic=7,Secret=8,Eternal=9,Divine=10
+}
+S.MinTier = S.MinTier or 5
+S.MaxTier = S.MaxTier or 10
+S.WhitelistRarity = S.WhitelistRarity or {}
+S.BlacklistRarity = S.BlacklistRarity or {}
+for _, r in ipairs(S.Rarities) do
+    if S.WhitelistRarity[r] == nil then S.WhitelistRarity[r] = (S.RarityTier[r] or 0) >= S.MinTier end
+    if S.BlacklistRarity[r] == nil then S.BlacklistRarity[r] = false end
+end
+S.PetWhitelist    = S.PetWhitelist    or {}
+S.PetBlacklist    = S.PetBlacklist    or {}
+S.UsePetNameFilter = S.UsePetNameFilter or false
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  PET CATALOG â€” Ä‘áº§y Ä‘á»§ ká»ƒ cáº£ Enchanted Forest (Update 7)
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local function seedCatalog()
+    S.PetCatalog = {
+        {n="Chicken",r="Common",b="Forest"},{n="Dog",r="Common",b="Forest"},
+        {n="Bird",r="Uncommon",b="Forest"},{n="Owl",r="Rare",b="Forest"},
+        {n="Raccoon",r="Epic",b="Forest"},{n="Fox",r="Epic",b="Forest"},
+        {n="Bear",r="Legendary",b="Forest"},{n="Brr Brr Patapim",r="Legendary",b="Forest"},
+        {n="Frog",r="Common",b="Lake"},{n="Duckling",r="Common",b="Lake"},
+        {n="Catfish",r="Uncommon",b="Lake"},{n="Turtle",r="Rare",b="Lake"},
+        {n="Trulimero Trulicina",r="Epic",b="Lake"},{n="Swan",r="Epic",b="Lake"},
+        {n="Axolotl",r="Legendary",b="Lake"},{n="Leviathan",r="Cosmic",b="Lake"},
+        {n="Jerboa",r="Common",b="Desert"},{n="Fennec",r="Uncommon",b="Desert"},
+        {n="Camel",r="Rare",b="Desert"},{n="Snake",r="Epic",b="Desert"},
+        {n="Scorpion",r="Legendary",b="Desert"},{n="Royal Sphinx",r="Cosmic",b="Desert"},
+        {n="Toucan",r="Common",b="Jungle"},{n="Chimpanzee",r="Uncommon",b="Jungle"},
+        {n="Crocodile",r="Rare",b="Jungle"},{n="Tiger",r="Legendary",b="Jungle"},
+        {n="King Snake",r="Mythic",b="Jungle"},
+        {n="Penguin",r="Common",b="Snow"},{n="Walrus",r="Uncommon",b="Snow"},
+        {n="Polar Bear",r="Rare",b="Snow"},{n="Yeti",r="Legendary",b="Snow"},
+        {n="Ice Dragon",r="Mythic",b="Snow"},
+        {n="Lava Gecko",r="Common",b="Volcano"},{n="Flaming Bull",r="Epic",b="Volcano"},
+        {n="Cerberus",r="Mythic",b="Volcano"},{n="Lava Dragon",r="Cosmic",b="Volcano"},
+        {n="Moby",r="Legendary",b="Abyss Ocean"},{n="El Maja",r="Cosmic",b="Abyss Ocean"},
+        {n="Ankylosaurus",r="Mythic",b="Prehistoric"},
+        {n="T-Rex",r="Mythic",b="Prehistoric"},{n="Mosasaurus",r="Cosmic",b="Prehistoric"},
+        {n="Cosmic Gecko",r="Legendary",b="Cosmic"},{n="Cosmic Gorilla",r="Mythic",b="Cosmic"},
+        {n="Cosmic Dragon",r="Secret",b="Cosmic"},{n="Unicorn",r="Divine",b="Cosmic"},
+        {n="Kitsune",r="Divine",b="Cherry Blossom"},{n="Oni Tiger",r="Eternal",b="Cherry Blossom"},
+        {n="Nightflame",r="Divine",b="Titan Temple"},{n="Gorilla King",r="Eternal",b="Titan Temple"},
+        {n="ArchAngel",r="Divine",b="Angels vs Demons"},
+        {n="World Burner",r="Divine",b="Angels vs Demons"},
+        {n="Pegasus",r="Eternal",b="Angels vs Demons"},
+        {n="Winged Lamb",r="Mythic",b="?"},{n="Toro",r="Mythic",b="?"},
+        {n="Bladehide",r="Mythic",b="?"},{n="Red Panda",r="Mythic",b="?"},
+        -- ENCHANTED FOREST (Update 7 Â· 50B speed req)
+        {n="Prism Gecko",r="Common",b="Enchanted Forest"},
+        {n="Petal Beetle",r="Uncommon",b="Enchanted Forest"},
+        {n="Enchanted Bluejay",r="Rare",b="Enchanted Forest"},
+        {n="Astral Jackalope",r="Epic",b="Enchanted Forest"},
+        {n="Spirit Panda",r="Legendary",b="Enchanted Forest"},
+        {n="Starry Fox",r="Mythic",b="Enchanted Forest"},
+        {n="Celestial Sunlion",r="Secret",b="Enchanted Forest"},
+        {n="Royal Skywhale",r="Divine",b="Enchanted Forest"},
+        {n="Ethereal Wisp",r="Eternal",b="Enchanted Forest"},
+    }
+end
+seedCatalog()
+
+S.Biomes = {
+    {name="Forest",           speed=0,              guardian="Chicken"},
+    {name="Lake",             speed=900,            guardian="Swan"},
+    {name="Desert",           speed=10000,          guardian="Scorpion"},
+    {name="Jungle",           speed=40000,          guardian="Tiger"},
+    {name="Snow",             speed=170000,         guardian="Yeti"},
+    {name="Volcano",          speed=700000,         guardian="Cerberus"},
+    {name="Abyss Ocean",      speed=2500000,        guardian="Moby"},
+    {name="Prehistoric",      speed=18000000,       guardian="T-Rex"},
+    {name="Cosmic",           speed=700000000,      guardian="Cosmic Skeleton"},
+    {name="Cherry Blossom",   speed=2500000000,     guardian="Oni Tiger"},
+    {name="Titan Temple",     speed=7000000000,     guardian="Gorilla King"},
+    {name="Angels vs Demons", speed=20000000000,    guardian="ArchAngel"},
+    {name="Enchanted Forest", speed=50000000000,    guardian="Celestial Sunlion"},
+}
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  UTIL
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local function notify(t)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification",{
+            Title="A6 Hub Â· SAEv3", Text=tostring(t), Duration=3
+        })
+    end)
+end
+local function hrp()
+    local c = LP.Character; return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function humanoid()
+    local c = LP.Character; return c and c:FindFirstChildOfClass("Humanoid")
+end
+local function webhook(title, desc, color)
+    if not S.WebhookURL or S.WebhookURL=="" then return end
+    pcall(function()
+        local body = HttpSvc:JSONEncode({embeds={{
+            title=title, description=desc, color=color or 65280,
+            footer={text="A6 Hub Â· SAEv3"},
+            timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ"),
+        }}})
+        local req = request or (syn and syn.request) or http_request
+        if req then
+            req({Url=S.WebhookURL,Method="POST",
+                 Headers={["Content-Type"]="application/json"},Body=body})
+        end
+    end)
+end
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  MOVEMENT
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local function stopMove()
+    local hum = humanoid(); if not hum then return end
+    pcall(function() hum:MoveTo(hrp() and hrp().Position or Vector3.zero) end)
+end
+local function walkTo(goal, timeout)
+    local root=hrp(); local hum=humanoid()
+    if not root or not hum then return false end
+    timeout = timeout or 14
+    local gp = typeof(goal)=="CFrame" and goal.Position or goal
+    gp = Vector3.new(gp.X, root.Position.Y, gp.Z)
+    acWalkSpeed(hum, S.StealWalkSpeed or 22)
+    pcall(function() hum:MoveTo(gp) end)
+    local t0 = tick()
+    while tick()-t0 < timeout do
+        root=hrp(); if not root then return false end
+        local d = (Vector3.new(root.Position.X,0,root.Position.Z)
+                 - Vector3.new(gp.X,0,gp.Z)).Magnitude
+        if d < 5 then stopMove(); return true end
+        if tick()-t0>2.5 and d>14 then
+            pcall(function()
+                hum:MoveTo(gp+Vector3.new(math.random(-2,2),0,math.random(-2,2)))
+            end)
+        end
+        task.wait(jitter(0.15,0.05,0.1))
+    end
+    stopMove(); return false
+end
+local function softTweenTo(cf, speed)
+    local root=hrp(); if not root then return end
+    speed = math.clamp(speed or S.TweenSpeed or 40, 28, 80)
+    local tp = typeof(cf)=="CFrame" and cf.Position or cf
+    tp = Vector3.new(tp.X, root.Position.Y+jitter(1.2,-0.3,0.5), tp.Z)
+    local dist = (root.Position-tp).Magnitude; if dist<3 then return end
+    local t = math.clamp(dist/speed, 0.2, 7)
+    local tw = TweenSvc:Create(root,TweenInfo.new(t,Enum.EasingStyle.Sine),{CFrame=CFrame.new(tp)})
+    tw:Play()
+    local done,t0=false,tick()
+    tw.Completed:Connect(function() done=true end)
+    while not done and tick()-t0<t+0.6 do task.wait(0.05) end
+end
+local function tweenTo(cf, speed)
+    if S.MoveStyle=="Walk" then
+        walkTo(typeof(cf)=="CFrame" and cf.Position or cf, 16)
+    else softTweenTo(cf, speed) end
+end
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  PET DETECT CACHE
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local PetCache = setmetatable({},{__mode="k"})
+local PET_TTL  = 9.0
+local function detectRarity(inst)
+    if not inst then return "Common" end
+    local now=tick(); local c=PetCache[inst]
+    if c and now-c.t<PET_TTL and c.r then return c.r end
+    local txt=(inst.Name or "")
+    local a=inst:GetAttribute("Rarity") or inst:GetAttribute("rarity")
+    if a then txt=txt.." "..tostring(a) end
+    for _,d in ipairs(inst:GetChildren()) do
+        if d:IsA("StringValue") or d:IsA("TextLabel") then
+            txt=txt.." "..tostring(d.Text or d.Value or "")
+        end
+    end
+    txt=txt:lower()
+    local order={"divine","eternal","secret","cosmic","mythic","legendary","epic","rare","uncommon","common"}
+    local map={divine="Divine",eternal="Eternal",secret="Secret",cosmic="Cosmic",mythic="Mythic",
+               legendary="Legendary",epic="Epic",rare="Rare",uncommon="Uncommon",common="Common"}
+    local res="Common"
+    for _,k in ipairs(order) do if txt:find(k,1,true) then res=map[k]; break end end
+    c=c or {}; c.t=now; c.r=res; PetCache[inst]=c; return res
+end
+local function detectPetName(inst)
+    if not inst then return nil end
+    local now=tick(); local c=PetCache[inst]
+    if c and now-c.t<PET_TTL and c.pet~=nil then return c.pet or nil end
+    local txt=tostring(inst.Name or "")
+    local a,b=inst:GetAttribute("PetName"),inst:GetAttribute("Name")
+    if a then txt=txt.." "..tostring(a) end
+    if b then txt=txt.." "..tostring(b) end
+    for _,d in ipairs(inst:GetChildren()) do
+        if d:IsA("StringValue") or d:IsA("TextLabel") then
+            txt=txt.." "..tostring(d.Text or d.Value or "")
+        end
+    end
+    txt=txt:lower()
+    local best,bestLen=nil,0
+    for _,pet in ipairs(S.PetCatalog) do
+        local key=pet.n:lower()
+        if #key>bestLen and txt:find(key,1,true) then best,bestLen=pet.n,#key end
+    end
+    c=c or{}; c.t=now; c.pet=best or false; PetCache[inst]=c; return best
+end
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  WHITELIST / BLACKLIST FILTER
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local function isAllowed(rarity, petName)
+    rarity=rarity or "Common"
+    if S.BlacklistRarity[rarity] then return false end
+    if petName and S.PetBlacklist[petName:lower()] then return false end
+    local mode=S.FilterMode or "Rarity"
+    if mode=="Pet" or mode=="Both" then
+        local anyPet=false
+        for _,v in pairs(S.PetWhitelist) do if v then anyPet=true; break end end
+        if anyPet then
+            if petName and S.PetWhitelist[petName:lower()] then return true end
+            if mode=="Pet" then return false end
+        end
+    end
+    if mode=="Rarity" or mode=="Both" then
+        if S.WhitelistRarity[rarity] then return true end
+        local t=S.RarityTier[rarity] or 1
+        if t>=(S.MinTier or 1) and t<=(S.MaxTier or 10) then
+            local anyR=false
+            for _,v in pairs(S.WhitelistRarity) do if v then anyR=true; break end end
+            if not anyR then return true end
+        end
+        return false
+    end
+    return true
+end
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  EGG SCAN CACHE â€” cache 6s, shuffle AC bypass
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local EggCache={t=0,list={}}
+local EGG_TTL=6.0
+local function collectEggs(force)
+    local now=tick()
+    if not force and now-EggCache.t<EGG_TTL then return EggCache.list end
+    local list={}
+    for _,v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("ProximityPrompt") then
+            local n=(v.Name.." "..(v.Parent and v.Parent.Name or "")):lower()
+            if n:find("egg",1,true) or n:find("steal",1,true)
+               or n:find("grab",1,true) or n:find("pick",1,true) or n:find("take",1,true) then
+                local obj=v.Parent or v
+                table.insert(list,{prompt=v,rarity=detectRarity(obj),parent=v.Parent,pet=detectPetName(obj)})
+            end
+        end
+    end
+    -- AC bypass: shuffle Ä‘á»ƒ khĂ´ng cĂ¹ng thá»© tá»± má»—i láº§n
+    for i=#list,2,-1 do
+        local j=math.random(i); list[i],list[j]=list[j],list[i]
+    end
+    EggCache.t=now; EggCache.list=list; return list
+end
+local function nearestAllowedEgg()
+    local root=hrp(); if not root then return nil end
+    local best,dist=nil,math.huge
+    for _,e in ipairs(collectEggs()) do
+        if isAllowed(e.rarity,e.pet) then
+            local part=e.parent; local pos
+            if part and part:IsA("BasePart") then pos=part.Position
+            elseif part and part:IsA("Model") then
+                local pp=part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")
+                if pp then pos=pp.Position end
+            end
+            if pos then
+                local d=(pos-root.Position).Magnitude
+                if d<dist then best,dist=e,d end
+            end
+        end
+    end
+    return best,dist
+end
+local function findBiomePart(name)
+    for _,v in ipairs(workspace:GetDescendants()) do
+        if v.Name:lower():find(name:lower()) and (v:IsA("BasePart") or v:IsA("Model")) then
+            if v:IsA("BasePart") then return v end
+            local p=v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
+            if p then return p end
+        end
+    end
+end
+local function findEnchantedForest()
+    return findBiomePart("Enchanted") or findBiomePart("EnchantForest") or findBiomePart("Enchanted Forest")
+end
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  ACTIONS
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local function dropEgg()
+    pcall(function() local h=humanoid(); if h then h:UnequipTools() end end)
+    local root=hrp(); if not root then return false end
+    for _,p in ipairs(workspace:GetDescendants()) do
+        if p:    task.wait(jitter(1.5,0.5,2.0))
+    while task.wait(jitter(0.22,0.05,0.18)) do
+        local now=os.clock()
+        local bestLabel,bestScore=nil,-math.huge
+        for _,label in ipairs(S.FeaturePriority) do
+            local key=S.FeaturePriorityKey[label]
+            if key and _priorityEnabled(label) then
+                local next=_prioNext[key] or 0
+                if now>=next then
+                    local rank=_priorityIndex(label)
+                    local score=(now-next)*10-rank
+                    if score>bestScore then bestScore,bestLabel=score,label end
+                end
+            end
+        end
+        if bestLabel then
+            local key=S.FeaturePriorityKey[bestLabel]
+            local base=BASE_INTERVAL[key] or 1.5
+            _prioNext[key]=now+base*(0.7+math.random()*1.7)
+            if key=="AutoSteal" then
+                if not _Stealing then pcall(doStealOnce) end
+            elseif key=="AutoScramble" then pcall(doScrambleEvent)
+            elseif key=="AutoPlace"    then pcall(tryPlace)
+            elseif key=="AutoHatch"    then pcall(tryHatch)
+            elseif key=="AutoIndex"    then if not _Stealing then pcall(doStealOnce) end
+            elseif key=="AutoTreadmill" then
+                if S.AutoTreadmill and not _Stealing then pcall(farmTreadmill) else stopMove() end
+            end
+        end
+        local function aux(label,enabled,base,fn)
+            if not enabled then return end
+            local t=_prioNext[label] or 0
+            if now>=t then _prioNext[label]=now+base*(0.8+math.random()*1.4); pcall(fn) end
+        end
+        aux("sell",   S.AutoSell,             4.5,trySell)
+        aux("mutation",S.AutoMutation,         3.2,tryMutation)
+        aux("upTM",   S.AutoUpgradeTreadmill, 9.0,upgradeTreadmill)
+        aux("upPlot", S.AutoUpgradePlot,       9.0,upgradePlot)
+    end
+end)
+
+task.spawn(function()
+    task.wait(jitter(0.5,0.2,0.5))
+    while task.wait(jitter(0.22,0.08,0.15)) do
+        local hum=humanoid()
+        if hum then
+            if S.SpeedBoost then acWalkSpeed(hum,S.WalkSpeed) end
+            if S.JumpBoost then pcall(function()
+                hum.JumpPower=S.JumpPower+math.random(-1,1); hum.UseJumpPower=true end) end
+        end
+        if S.AntiRagdoll then pcall(function()
+            local c=LP.Character; if not c then return end
+            local h=c:FindFirstChildOfClass("Humanoid")
+            if h and h:GetState()==Enum.HumanoidStateType.Physics then
+                h:ChangeState(Enum.HumanoidStateType.Running) end end) end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(jitter(32,8,15)) do
+        if S.AntiAFK then pcall(function()
+            VUser:CaptureController(); VUser:ClickButton2(Vector2.new()) end) end
+    end
+end)
+
+UIS.JumpRequest:Connect(function()
+    if S.InfJump then
+        local hum=humanoid()
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+--  ESP
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+local espFolder=Instance.new("Folder"); espFolder.Name="A6SAEv3_ESP"; espFolder.Parent=game.CoreGui
+task.spawn(function()
+    while task.wait(jitter(1.8,0.3,0.8)) do
+        for _,c in ipairs(espFolder:GetChildren()) do c:Destroy() end
+        if not S.EggESP then continue end
+        for _,e in ipairs(collectEggs()) do
+            local part=e.parent and (e.parent:IsA("BasePart") and e.parent
+                          or e.parent:FindFirstChildWhichIsA("BasePart"))
+            if part then
+                local bb=Instance.new("BillboardGui")
+                bb.Size=UDim2.new(0,150,0,34); bb.AlwaysOnTop=true
+                bb.Adornee=part; bb.Parent=espFolder
+                local tl=Instance.new("TextLabel",bb)
+                tl.Size=UDim2.new(1,0,1,0); tl.BackgroundTransparency=1
+                local ok=isAllowed(e.rarity,e.pet)
+                tl.Text=(e.pet and (e.pet.." Â· ") or "")..e.rarity..(ok and " âœ“" or " âœ—")
+                tl.TextColor3=ok and Color3.fromRGB(80,255,120) or Color3.fromRGB(255,100,100)
+                tl.Font=Enum.Font.GothamBold; tl.TextSize=12; tl.TextStrokeTransparency=0.4
+            end
+        end
+    end
+end)
+        end; rfr()
+        wlB.MouseButton1Click:Connect(function() S.PetWhitelist[pkey]=not S.PetWhitelist[pkey]; if S.PetWhitelist[pkey] then S.PetBlacklist[pkey]=false end; rfr(); notify((S.PetWhitelist[pkey] and "WL: " or "WL off: ")..pet.n) end)
+        blB.MouseButton1Click:Connect(function() S.PetBlacklist[pkey]=not S.PetBlacklist[pkey]; if S.PetBlacklist[pkey] then S.PetWhitelist[pkey]=false end; rfr(); notify((S.PetBlacklist[pkey] and "BL: " or "BL off: ")..pet.n) end)
+    end
+    local function rebuildPetList(filter)
+        for _,c in ipairs(petListHost:GetChildren()) do if c:IsA("Frame") or c:IsA("TextLabel") then c:Destroy() end end
+        local f=(filter or ""):lower()
+        local grouped={}; local biomeOrder={}
+        for _,pet in ipairs(S.PetCatalog) do
+            if f=="" or pet.n:lower():find(f,1,true) or pet.b:lower():find(f,1,true) then
+                if not grouped[pet.b] then grouped[pet.b]={}; table.insert(biomeOrder,pet.b) end
+                table.insert(grouped[pet.b],pet)
+            end
+        end
+        local seen={}; local deduped={}
+        for _,b in ipairs(biomeOrder) do if not seen[b] then seen[b]=true; table.insert(deduped,b) end end
+        for _,biome in ipairs(deduped) do
+            local brow=Instance.new("TextLabel",petListHost)
+            brow.Size=UDim2.new(1,0,0,18); brow.BackgroundTransparency=1
+            brow.Font=Enum.Font.GothamBold; brow.TextSize=10
+            brow.TextColor3=Color3.fromRGB(100,200,255); brow.TextXAlignment=Enum.TextXAlignment.Left
+            brow.Text="  â—† "..biome
+            for _,pet in ipairs(grouped[biome]) do makePetWLBL(petListHost,pet) end
+        end
+    end
+    rebuildPetList("")
+    search:GetPropertyChangedSignal("Text"):Connect(function() rebuildPetList(search.Text) end)
+    actionBtn(pages["Filter"],"Clear all WL",Color3.fromRGB(40,50,70),function() S.PetWhitelist={}; rebuildPetList(search.Text); notify("WL cleared") end)
+    actionBtn(pages["Filter"],"Clear all BL",Color3.fromRGB(70,40,40),function() S.PetBlacklist={}; rebuildPetList(search.Text); notify("BL cleared") end)
+
+    -- â”€â”€â”€ RARITY TAB â”€â”€â”€
+    section(pages["Rarity"],"Rarity Whitelist")
+    tip(pages["Rarity"],"WL ON = steal rarity nĂ y | BL ON = khĂ´ng bao giá» steal")
+    for _,r in ipairs(S.Rarities) do
+        local key="WLR_"..r; S[key]=S.WhitelistRarity[r]
+        toggleRow(pages["Rarity"],"WL Â· "..r,key)
+        task.spawn(function() while task.wait(0.4) do S.WhitelistRarity[r]=S[key] end end)
+    end
+    section(pages["Rarity"],"Rarity Blacklist")
+    for _,r in ipairs(S.Rarities) do
+        local key="BLR_"..r; S[key]=S.BlacklistRarity[r]
+        toggleRow(pages["Rarity"],"BL Â· "..r,key)
+        task.spawn(function() while task.wait(0.4) do S.BlacklistRarity[r]=S[key] end end)
+    end
+    section(pages["Rarity"],"Preset")
+    actionBtn(pages["Rarity"],"Legendary+ (tier 5+)",Color3.fromRGB(40,80,120),function()
+        S.MinTier=5; S.MaxTier=10
+        for _,r in ipairs(S.Rarities) do
+            local on=(S.RarityTier[r] or 0)>=5
+            S.WhitelistRarity[r]=on; S["WLR_"..r]=on
+        end; notify("Preset: Legendary+")
+    end)
+    actionBtn(pages["Rarity"],"Secret+ (tier 8+)",Color3.fromRGB(60,40,120),function()
+        S.MinTier=8; S.MaxTier=10
+        for _,r in ipairs(S.Rarities) do
+            local on=(S.RarityTier[r] or 0)>=8
+            S.WhitelistRarity[r]=on; S["WLR_"..r]=on
+        end; notify("Preset: Secret+")
+    end)
+
+    -- â”€â”€â”€ FARM TAB â”€â”€â”€
+    section(pages["Farm"],"Farm Automation")
+    toggleRow(pages["Farm"],"Auto Farm Speed (Treadmill)","AutoTreadmill")
+    toggleRow(pages["Farm"],"Auto Place After Steal","AutoPlace")
+    toggleRow(pages["Farm"],"Auto Hatch Egg","AutoHatch")
+    toggleRow(pages["Farm"],"Auto Sell","AutoSell")
+    toggleRow(pages["Farm"],"Auto Mutation Items","AutoMutation")
+    toggleRow(pages["Farm"],"Auto Upgrade Treadmill","AutoUpgradeTreadmill")
+    toggleRow(pages["Farm"],"Auto Upgrade Plot","AutoUpgradePlot")
+    toggleRow(pages["Farm"],"Auto Dr Scramble","AutoScramble")
+    toggleRow(pages["Farm"],"Auto Steal (Index fill)","AutoIndex")
+
+    -- â”€â”€â”€ PLAYER TAB â”€â”€â”€
+    section(pages["Player"],"Player Mods")
+    toggleRow(pages["Player"],"Speed Boost","SpeedBoost")
+    toggleRow(pages["Player"],"Jump Boost","JumpBoost")
+    toggleRow(pages["Player"],"Infinite Jump","InfJump")
+    toggleRow(pages["Player"],"Anti Ragdoll","AntiRagdoll")
+    toggleRow(pages["Player"],"Anti AFK","AntiAFK")
+    section(pages["Player"],"Speed Value")
+    local spd=Instance.new("TextBox",pages["Player"])
+    spd.Size=UDim2.new(1,0,0,28); spd.BackgroundColor3=Color3.fromRGB(32,34,44)
+    spd.Font=Enum.Font.Gotham; spd.TextSize=12; spd.Text=tostring(S.WalkSpeed)
+    spd.TextColor3=Color3.fromRGB(230,230,240); spd.ClearTextOnFocus=false
+    Instance.new("UICorner",spd).CornerRadius=UDim.new(0,8)
+    spd.FocusLost:Connect(function() local v=tonumber(spd.Text); if v then S.WalkSpeed=math.clamp(v,14,100) end end)
+
+    -- â”€â”€â”€ VISUAL TAB â”€â”€â”€
+    section(pages["Visual"],"Visual & Move")
+    toggleRow(pages["Visual"],"Egg ESP","EggESP")
+    do
+        local row=Instance.new("Frame",pages["Visual"])
+        row.Size=UDim2.new(1,0,0,32); row.BackgroundColor3=Color3.fromRGB(28,30,38)
+        Instance.new("UICorner",row).CornerRadius=UDim.new(0,8)
+        local modes={"Walk","SoftTween"}; local btns={}
+        for i,m in ipairs(modes) do
+            local b=Instance.new("TextButton",row)
+            b.Size=UDim2.new(0,100,0,22); b.Position=UDim2.new(0,8+(i-1)*106,0.5,-11)
+            b.Font=Enum.Font.GothamBold; b.TextSize=11; b.Text=m; b.BorderSizePixel=0
+            Instance.new("UICorner",b).CornerRadius=UDim.new(0,6); b.TextColor3=Color3.fromRGB(255,255,255); btns[m]=b
+        end
+        local function rm() for _,m in ipairs(modes) do btns[m].BackgroundColor3=S.MoveStyle==m and Color3.fromRGB(50,140,220) or Color3.fromRGB(50,50,70) end end; rm()
+        for _,m in ipairs(modes) do btns[m].MouseButton1Click:Connect(function() S.MoveStyle=m; rm() end) end
+    end
+    actionBtn(pages["Visual"],"TweenSpeed +10",Color3.fromRGB(40,44,55),function() S.TweenSpeed=math.min(90,S.TweenSpeed+10); notify("Tween "..S.TweenSpeed) end)
+    actionBtn(pages["Visual"],"TweenSpeed -10",Color3.fromRGB(40,44,55),function() S.TweenSpeed=math.max(28,S.TweenSpeed-10); notify("Tween "..S.TweenSpeed) end)
+
+    -- â”€â”€â”€ ENCHANTED FOREST TAB â”€â”€â”€
+    section(pages["Enchanted"],"Enchanted Forest â€” Update 7 (50B)")
+    tip(pages["Enchanted"],"Guardian: Celestial Sunlion | Boss: Royal Skywhale (Divine)")
+    tip(pages["Enchanted"],"Wisp: Ethereal Wisp (Eternal) â€” roam spawn, khĂ´ng pháº£i egg thÆ°á»ng")
+    for _,pet in ipairs(S.PetCatalog) do
+        if pet.b=="Enchanted Forest" then makePetWLBL(pages["Enchanted"],pet) end
+    end
+    actionBtn(pages["Enchanted"],"TP â†’ Enchanted Forest",Color3.fromRGB(70,30,120),function()
+        local part=findEnchantedForest()
+        if part then local r=hrp(); if r then tweenTo(Vector3.new(part.Position.X,r.Position.Y,part.Position.Z)) end; notify("TP Enchanted Forest")
+        else notify("KhĂ´ng tháº¥y Enchanted Forest") end
+    end)
+    actionBtn(pages["Enchanted"],"WL táº¥t cáº£ Enchanted",Color3.fromRGB(50,30,100),function()
+        for _,pet in ipairs(S.PetCatalog) do if pet.b=="Enchanted Forest" then S.PetWhitelist[pet.n:lower()]=true end end; notify("WL all Enchanted") end)
+    actionBtn(pages["Enchanted"],"WL Legendary+ Enchanted",Color3.fromRGB(40,25,80),function()
+        for _,pet in ipairs(S.PetCatalog) do
+            if pet.b=="Enchanted Forest" and (S.RarityTier[pet.r] or 0)>=5 then S.PetWhitelist[pet.n:lower()]=true end
+        end; notify("WL Legendary+ Enchanted") end)
+
+    -- â”€â”€â”€ WEBHOOK TAB â”€â”€â”€
+    section(pages["Webhook"],"Discord Webhook")
+    local box=Instance.new("TextBox",pages["Webhook"])
+    box.Size=UDim2.new(1,0,0,54); box.BackgroundColor3=Color3.fromRGB(32,34,44)
+    box.Font=Enum.Font.Code; box.TextSize=11; box.TextColor3=Color3.fromRGB(220,220,230)
+    box.PlaceholderText="https://discord.com/api/webhooks/..."
+    box.Text=S.WebhookURL or ""; box.TextWrapped=true; box.MultiLine=true; box.ClearTextOnFocus=false
+    Instance.new("UICorner",box).CornerRadius=UDim.new(0,8)
+    box.FocusLost:Connect(function() S.WebhookURL=box.Text end)
+    toggleRow(pages["Webhook"],"Webhook má»—i láº§n steal","WebhookOnSteal")
+    toggleRow(pages["Webhook"],"Webhook rare only (Secret+)","WebhookOnRare",true)
+    actionBtn(pages["Webhook"],"Test Webhook",Color3.fromRGB(0,120,100),function()
+        S.WebhookURL=box.Text; webhook("A6 Test","OK Â· "..LP.Name,3447003); notify("Sent") end)
+
+    -- â”€â”€â”€ SETTINGS TAB â”€â”€â”€
+    section(pages["Settings"],"Server")
+    actionBtn(pages["Settings"],"Rejoin",Color3.fromRGB(100,40,40),function() TpSvc:Teleport(game.PlaceId,LP) end)
+    actionBtn(pages["Settings"],"Server Hop",Color3.fromRGB(100,60,20),function()
+        pcall(function()
+            local url="https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=50"
+            local data=HttpSvc:JSONDecode(game:HttpGet(url))
+            for _,s in ipairs(data.data or {}) do
+                if s.id~=game.JobId and s.playing<(s.maxPlayers or 30) then
+                    TpSvc:TeleportToPlaceInstance(game.PlaceId,s.id,LP); return
+                end
+            end
+        end)
+    end)
+    section(pages["Settings"],"AC Bypass Info v3")
+    tip(pages["Settings"],"Timing jitter Â±30â€“110% | WalkSpeed noise Â±3 | Prompt delay 80â€“280ms")
+    tip(pages["Settings"],"Egg list shuffle má»—i scan | Scheduler random [0.7Ă—,2.4Ă—] base")
+    tip(pages["Settings"],"ESP interval random 1.5â€“2.6s | KhĂ´ng RE spam | Cache 6s")
+    actionBtn(pages["Settings"],"Copy Discord",Color3.fromRGB(88,101,242),function()
+        pcall(setclipboard,DISCORD); notify("Copied") end)
+
+    showTab("Steal")
+end
+
+pcall(build)
+notify("A6 Hub Â· SAEv3 Â· AC Bypass Â· ready")
+print("[A6 SAEv3] ready Â· "..DISCORD)
