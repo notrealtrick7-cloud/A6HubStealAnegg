@@ -1,0 +1,1261 @@
+--[[
+    A6 Hub · Steal an Egg v0.19 · BAC-4511 Ghost Mode
+    Pure Walk only · no SoftTween on steal path · no HipHeight default
+    Extreme property spoof · long human delays · minimal velocity
+    Use this when BAC-5513 / 8517 / 4511 keep rotating.
+    Discord: https://discord.gg/ZkGwEUGJv
+]]
+
+print("[A6 SAE] Loading A6 Hub · SAE v0.19 · BAC-4511 Ghost ...")
+
+local Players         = game:GetService("Players")
+local TweenService    = game:GetService("TweenService")
+local UIS             = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService     = game:GetService("HttpService")
+local VirtualUser     = game:GetService("VirtualUser")
+local RunService      = game:GetService("RunService")
+local LP              = Players.LocalPlayer
+local DISCORD         = "https://discord.gg/ZkGwEUGJv"
+
+getgenv().A6SAE = getgenv().A6SAE or {}
+local S = getgenv().A6SAE
+
+-- ═══════════════════════════════════════
+--  DEFAULTS — Ghost (ultra safe)
+-- ═══════════════════════════════════════
+S.AutoSteal             = S.AutoSteal           or false
+S.AutoPlace             = S.AutoPlace           or false
+S.AutoHatch             = S.AutoHatch           or false
+S.AutoSell              = S.AutoSell            or false
+S.AutoMutation          = S.AutoMutation        or false
+S.AutoTreadmill         = S.AutoTreadmill       or false
+S.AutoUpgradeTreadmill  = S.AutoUpgradeTreadmill or false
+S.AutoUpgradePlot       = S.AutoUpgradePlot     or false
+S.AutoIndex             = S.AutoIndex           or false
+S.AutoScramble          = S.AutoScramble        or false
+S.EggESP                = S.EggESP              or false
+S.SpeedBoost            = S.SpeedBoost          or false
+S.JumpBoost             = S.JumpBoost           or false
+S.InfJump               = S.InfJump             or false
+S.AntiRagdoll           = S.AntiRagdoll         or true
+S.AntiAFK               = S.AntiAFK             or true
+S.WalkSpeed             = S.WalkSpeed           or 16
+S.JumpPower             = S.JumpPower           or 50
+S.StealDelay            = S.StealDelay          or 2.1
+S.TweenSpeed            = S.TweenSpeed          or 22
+S.StealWalkSpeed        = S.StealWalkSpeed      or 15
+S.MoveStyle             = S.MoveStyle           or "Walk"      -- forced Walk
+S.StealMethod           = S.StealMethod         or "WalkDrop"  -- Walk only
+S.HipHeightValue        = S.HipHeightValue      or 0           -- disabled
+S.WebhookURL            = S.WebhookURL          or ""
+S.WebhookOnSteal        = S.WebhookOnSteal      or false
+S.WebhookOnRare         = S.WebhookOnRare       or true
+S.PetWhitelist          = S.PetWhitelist        or {}
+S.PetBlacklist          = S.PetBlacklist        or {}
+
+S.AutoButterfly         = S.AutoButterfly       or false
+S.AutoConvertButterfly  = S.AutoConvertButterfly or false
+S.AutoEssence           = S.AutoEssence         or false
+S.ButterflyPriority     = S.ButterflyPriority   or {"Radiant","Amethyst","Sapphire","Emerald"}
+S.ButterflyWhitelist    = S.ButterflyWhitelist  or {Emerald=true,Sapphire=true,Amethyst=true,Radiant=true}
+
+S.Rarities = {"Common","Uncommon","Rare","Epic","Legendary","Mythic","Cosmic","Secret","Eternal","Divine"}
+S.RarityTier = {Common=1,Uncommon=2,Rare=3,Epic=4,Legendary=5,Mythic=6,Cosmic=7,Secret=8,Eternal=9,Divine=10}
+S.MinTier = S.MinTier or 5
+S.WhitelistRarity = S.WhitelistRarity or {}
+S.BlacklistRarity = S.BlacklistRarity or {}
+for _, r in ipairs(S.Rarities) do
+    if S.WhitelistRarity[r] == nil then S.WhitelistRarity[r] = (S.RarityTier[r] or 0) >= S.MinTier end
+    if S.BlacklistRarity[r] == nil then S.BlacklistRarity[r] = false end
+end
+
+S.FeaturePriority = S.FeaturePriority or {
+    "Steal Egg Selected","Auto Place After Steal",
+    "Auto Hatch Egg","Auto Steal Egg Miss In Index","Auto Farm Speed",
+}
+S.FeaturePriorityKey = {
+    ["Steal Egg Selected"]           = "AutoSteal",
+    ["Auto Place After Steal"]       = "AutoPlace",
+    ["Auto Hatch Egg"]               = "AutoHatch",
+    ["Auto Steal Egg Miss In Index"] = "AutoIndex",
+    ["Auto Farm Speed"]              = "AutoTreadmill",
+}
+S.FeaturePriorityInterval = {
+    AutoSteal=2.1, AutoPlace=2.0, AutoHatch=1.9, AutoIndex=2.0, AutoTreadmill=0.85,
+}
+
+-- ═══════════════════════════════════════
+--  PET CATALOG — NORMAL ONLY
+-- ═══════════════════════════════════════
+local function seedCatalog()
+    S.PetCatalog = {
+        {n="Chicken",r="Common",b="Forest"},{n="Dog",r="Common",b="Forest"},
+        {n="Bird",r="Uncommon",b="Forest"},{n="Owl",r="Rare",b="Forest"},
+        {n="Burrowing Owl",r="Rare",b="Forest"},{n="Raccoon",r="Rare",b="Forest"},
+        {n="Bear",r="Epic",b="Forest"},{n="Fox",r="Epic",b="Forest"},
+        {n="Brr Brr Patapim",r="Legendary",b="Forest"},
+        {n="Frog",r="Common",b="Lake"},{n="Duckling",r="Common",b="Lake"},
+        {n="Catfish",r="Uncommon",b="Lake"},{n="Turtle",r="Rare",b="Lake"},
+        {n="Trulimero Trulicina",r="Epic",b="Lake"},{n="Swan",r="Epic",b="Lake"},
+        {n="Axolotl",r="Legendary",b="Lake"},{n="Leviathan",r="Cosmic",b="Lake"},
+        {n="Jerboa",r="Common",b="Desert"},{n="Fennec",r="Uncommon",b="Desert"},
+        {n="Camel",r="Rare",b="Desert"},{n="Tob Tobi Tob Tob",r="Epic",b="Desert"},
+        {n="Snake",r="Legendary",b="Desert"},{n="Scorpion",r="Mythic",b="Desert"},
+        {n="Sand Spider",r="Mythic",b="Desert"},{n="Royal Sphinx",r="Cosmic",b="Desert"},
+        {n="Toucan",r="Rare",b="Jungle"},{n="Chimpanzee",r="Rare",b="Jungle"},
+        {n="Crocodile",r="Epic",b="Jungle"},{n="Gorilla",r="Legendary",b="Jungle"},
+        {n="Orangutini Ananassini",r="Legendary",b="Jungle"},{n="Spider",r="Mythic",b="Jungle"},
+        {n="Tiger",r="Mythic",b="Jungle"},{n="King Snake",r="Secret",b="Jungle"},
+        {n="Penguin",r="Rare",b="Snow"},{n="Walrus",r="Epic",b="Snow"},
+        {n="Polar Bear",r="Legendary",b="Snow"},{n="Sabertooth Tiger",r="Mythic",b="Snow"},
+        {n="Mammoth",r="Mythic",b="Snow"},{n="King Mammoth",r="Cosmic",b="Snow"},
+        {n="Yeti",r="Secret",b="Snow"},{n="Ice Dragon",r="Eternal",b="Snow"},
+        {n="Lava Gecko",r="Rare",b="Volcano"},{n="Lava Frog",r="Epic",b="Volcano"},
+        {n="Flaming Bull",r="Legendary",b="Volcano"},{n="Lava Iguana",r="Legendary",b="Volcano"},
+        {n="Chillin Chilli",r="Mythic",b="Volcano"},{n="Cerberus",r="Secret",b="Volcano"},
+        {n="Phoenix",r="Eternal",b="Volcano"},{n="Lava Dragon",r="Eternal",b="Volcano"},
+        {n="Parrotfish",r="Rare",b="Abyss Ocean"},{n="Swordfish",r="Epic",b="Abyss Ocean"},
+        {n="Shark",r="Legendary",b="Abyss Ocean"},{n="Orca",r="Mythic",b="Abyss Ocean"},
+        {n="Whale Shark",r="Cosmic",b="Abyss Ocean"},{n="Beluga Whale",r="Cosmic",b="Abyss Ocean"},
+        {n="Kraken",r="Secret",b="Abyss Ocean"},{n="El Maja",r="Eternal",b="Abyss Ocean"},
+        {n="Dodo",r="Rare",b="Prehistoric"},{n="Pterodactyl",r="Legendary",b="Prehistoric"},
+        {n="Ankylosaurus",r="Mythic",b="Prehistoric"},{n="Triceratops",r="Cosmic",b="Prehistoric"},
+        {n="Bronto",r="Cosmic",b="Prehistoric"},{n="T-Rex",r="Secret",b="Prehistoric"},
+        {n="Mosasaurus",r="Eternal",b="Prehistoric"},
+        {n="Centapede",r="Epic",b="Cosmic"},{n="Cosmic Gecko",r="Legendary",b="Cosmic"},
+        {n="Cosmic Gorilla",r="Mythic",b="Cosmic"},{n="La Vacca Saturno Saturnita",r="Cosmic",b="Cosmic"},
+        {n="Cosmic Dragon",r="Secret",b="Cosmic"},{n="Unicorn",r="Divine",b="Cosmic"},
+        {n="Crane",r="Epic",b="Cherry Blossom"},{n="Kitsune",r="Divine",b="Cherry Blossom"},
+        {n="Oni Tiger",r="Eternal",b="Cherry Blossom"},
+        {n="Bladehide",r="Mythic",b="Titan Temple"},{n="Nightflame",r="Divine",b="Titan Temple"},
+        {n="Gorilla King",r="Eternal",b="Titan Temple"},
+        {n="Winged Lamb",r="Mythic",b="Angels vs Demons"},{n="Toro",r="Mythic",b="Angels vs Demons"},
+        {n="Pegasus",r="Eternal",b="Angels vs Demons"},{n="ArchAngel",r="Divine",b="Angels vs Demons"},
+        {n="World Burner",r="Divine",b="Angels vs Demons"},
+        {n="Prism Gecko",r="Legendary",b="Enchanted Forest"},{n="Petal Beetle",r="Mythic",b="Enchanted Forest"},
+        {n="Enchanted Bluejay",r="Mythic",b="Enchanted Forest"},{n="Astral Jackalope",r="Cosmic",b="Enchanted Forest"},
+        {n="Spirit Panda",r="Cosmic",b="Enchanted Forest"},{n="Starry Fox",r="Secret",b="Enchanted Forest"},
+        {n="Celestial Sunlion",r="Eternal",b="Enchanted Forest"},{n="Royal Skywhale",r="Divine",b="Enchanted Forest"},
+        {n="Jitterbug",r="Secret",b="Enchanted Forest"},{n="Ethereal Wisp",r="Eternal",b="Enchanted Forest"},
+    }
+end
+seedCatalog()
+
+S.Biomes = {
+    {name="Forest",speed=0},{name="Lake",speed=900},{name="Desert",speed=10000},
+    {name="Jungle",speed=40000},{name="Snow",speed=170000},{name="Volcano",speed=700000},
+    {name="Abyss Ocean",speed=2500000},{name="Prehistoric",speed=18000000},
+    {name="Cosmic",speed=700000000},{name="Cherry Blossom",speed=2500000000},
+    {name="Titan Temple",speed=7000000000},{name="Angels vs Demons",speed=20000000000},
+    {name="Enchanted Forest",speed=50000000000},
+}
+
+-- ═══════════════════════════════════════
+--  AC CORE — Ghost (max spoof, min movement)
+-- ═══════════════════════════════════════
+local mt = getrawmetatable and getrawmetatable(game) or nil
+local oldNamecall, oldIndex, oldNewIndex
+local protected = {}
+local lastSafePos, lastSafeTick = nil, 0
+
+local function protect(obj)
+    if obj then protected[obj] = true end
+end
+
+local BAD_REMOTE_KEYS = {
+    "kick","ban","detect","flag","report","anticheat","ac_","threat",
+    "telemetry","log","punish","cheat","exploit","speed","velocity",
+    "position","teleport","tp","moderation","mod_","security","secure",
+    "validate","check","monitor","watch","spy","track","audit",
+    "hip","height","walkspeed","jump","state","ragdoll","physics",
+    "character","humanoid","root","assembly","linear","angular",
+    "cframe","move","walk","run","fly","noclip","god"
+}
+
+local function isBadRemote(name)
+    name = tostring(name or ""):lower()
+    for _, k in ipairs(BAD_REMOTE_KEYS) do
+        if name:find(k, 1, true) then return true end
+    end
+    return false
+end
+
+if mt and setreadonly then
+    setreadonly(mt, false)
+    oldNamecall = mt.__namecall
+    oldIndex    = mt.__index
+    oldNewIndex = mt.__newindex
+
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if typeof(self) == "Instance" then
+            local n = self.Name
+            if method == "FireServer" or method == "InvokeServer" or method == "Fire" or method == "Invoke" then
+                if isBadRemote(n) then return end
+                local parentName = self.Parent and self.Parent.Name or ""
+                if isBadRemote(parentName) then return end
+            end
+        end
+        return oldNamecall(self, ...)
+    end)
+
+    mt.__index = newcclosure(function(self, k)
+        if protected[self] then
+            if k == "WalkSpeed" then return 16 end
+            if k == "JumpPower" then return 50 end
+            if k == "JumpHeight" then return 7.2 end
+            if k == "HipHeight" then return 0 end
+            if k == "MaxSlopeAngle" then return 89 end
+        end
+        return oldIndex(self, k)
+    end)
+
+    mt.__newindex = newcclosure(function(self, k, v)
+        if protected[self] then
+            if k == "WalkSpeed" or k == "JumpPower" or k == "JumpHeight" or k == "HipHeight" then
+                return oldNewIndex(self, k, v)
+            end
+        end
+        return oldNewIndex(self, k, v)
+    end)
+    setreadonly(mt, true)
+end
+
+local function hrp()
+    local c = LP.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function humanoid()
+    local c = LP.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function jitter(base, lo, hi)
+    lo = lo or -0.10
+    hi = hi or 0.10
+    return base + lo + math.random() * (hi - lo)
+end
+
+local function acWait(base)
+    task.wait(jitter(base, base * 0.30, base * 1.30))
+end
+
+local function acWalkSpeed(hum, target)
+    if not hum then return end
+    protect(hum)
+    local real = math.clamp(target + math.random(-1, 0), 14, 18)
+    pcall(function() hum.WalkSpeed = real end)
+end
+
+-- continuous heartbeat — very gentle
+task.spawn(function()
+    while true do
+        task.wait(0.30 + math.random() * 0.25)
+        local hum = humanoid()
+        local root = hrp()
+        if hum then
+            protect(hum)
+            pcall(function()
+                if hum.WalkSpeed > 18 then hum.WalkSpeed = 16 end
+                if hum.HipHeight and hum.HipHeight > 0.1 then hum.HipHeight = 0 end
+            end)
+        end
+        if root then
+            pcall(function()
+                local v = root.AssemblyLinearVelocity
+                root.AssemblyLinearVelocity = Vector3.new(
+                    math.clamp(v.X, -35, 35),
+                    math.clamp(v.Y, -55, 55),
+                    math.clamp(v.Z, -35, 35)
+                )
+            end)
+            lastSafePos = root.Position
+            lastSafeTick = tick()
+        end
+        if hum and hum:GetState() == Enum.HumanoidStateType.Physics then
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+        end
+    end
+end)
+
+LP.CharacterAdded:Connect(function(char)
+    task.wait(0.7)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if hum then protect(hum) end
+    if root then
+        lastSafePos = root.Position
+        lastSafeTick = tick()
+    end
+end)
+if LP.Character then
+    local hum = LP.Character:FindFirstChildOfClass("Humanoid")
+    if hum then protect(hum) end
+end
+
+-- ═══════════════════════════════════════
+--  UTIL
+-- ═══════════════════════════════════════
+local function notify(t)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "A6 Ghost", Text = tostring(t), Duration = 2.5
+        })
+    end)
+end
+
+local function webhook(title, desc, color)
+    if not S.WebhookURL or S.WebhookURL == "" then return end
+    pcall(function()
+        local body = HttpService:JSONEncode({embeds = {{
+            title = title, description = desc, color = color or 65280,
+            footer = {text = "A6 Hub · Ghost BAC-4511"},
+        }}})
+        local req = request or (syn and syn.request) or http_request
+        if req then
+            req({Url = S.WebhookURL, Method = "POST",
+                 Headers = {["Content-Type"] = "application/json"}, Body = body})
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════
+--  MOVEMENT — pure Walk only
+-- ═══════════════════════════════════════
+local function stopMove()
+    local hum = humanoid()
+    if not hum then return end
+    pcall(function() hum:MoveTo(hrp() and hrp().Position or Vector3.zero) end)
+end
+
+local function walkTo(goal, timeout)
+    local root = hrp()
+    local hum = humanoid()
+    if not root or not hum then return false end
+    timeout = timeout or 20
+    local gp = typeof(goal) == "CFrame" and goal.Position or goal
+    gp = Vector3.new(gp.X, root.Position.Y, gp.Z)
+    acWalkSpeed(hum, S.StealWalkSpeed or 15)
+    pcall(function() hum:MoveTo(gp) end)
+    local t0 = tick()
+    while tick() - t0 < timeout do
+        root = hrp()
+        if not root then return false end
+        local d = (Vector3.new(root.Position.X, 0, root.Position.Z)
+                 - Vector3.new(gp.X, 0, gp.Z)).Magnitude
+        if d < 4.5 then stopMove(); return true end
+        if tick() - t0 > 3.0 and d > 14 then
+            pcall(function()
+                hum:MoveTo(gp + Vector3.new(math.random(-2, 2), 0, math.random(-2, 2)))
+            end)
+        end
+        task.wait(jitter(0.16, 0.06, 0.10))
+    end
+    stopMove()
+    return false
+end
+
+-- only used for non-steal biome TP (still very slow)
+local function softTweenTo(cf, speed)
+    local root = hrp()
+    if not root then return end
+    speed = math.clamp(speed or 22, 16, 30)
+    local tp = typeof(cf) == "CFrame" and cf.Position or cf
+    tp = Vector3.new(tp.X, root.Position.Y, tp.Z)
+    local dist = (root.Position - tp).Magnitude
+    if dist < 3 then return end
+    if dist > 45 then
+        local steps = math.ceil(dist / 30)
+        local dir = (tp - root.Position)
+        for i = 1, steps do
+            local mid = root.Position + dir * (i / steps)
+            softTweenTo(CFrame.new(mid), speed)
+            acWait(0.10)
+            root = hrp()
+            if not root then return end
+        end
+        return
+    end
+    local t = math.clamp(dist / speed, 0.35, 7.0)
+    local tw = TweenService:Create(root, TweenInfo.new(t, Enum.EasingStyle.Sine), {CFrame = CFrame.new(tp)})
+    tw:Play()
+    local done, t0 = false, tick()
+    tw.Completed:Connect(function() done = true end)
+    while not done and tick() - t0 < t + 0.6 do task.wait(0.05) end
+end
+
+local function tweenTo(cf, speed)
+    -- Ghost always prefers Walk
+    walkTo(typeof(cf) == "CFrame" and cf.Position or cf, 18)
+end
+
+local function findBiomePart(name)
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v.Name:lower():find(name:lower()) and (v:IsA("BasePart") or v:IsA("Model")) then
+            if v:IsA("BasePart") then return v end
+            local p = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
+            if p then return p end
+        end
+    end
+end
+
+local function tpLake()
+    local root = hrp()
+    if not root then return end
+    for _, v in ipairs(workspace:GetDescendants()) do
+        local n = v.Name:lower()
+        if (n:find("lake") or n:find("safe")) and v:IsA("BasePart") then
+            walkTo(Vector3.new(v.Position.X + jitter(0, -3, 3), root.Position.Y, v.Position.Z + jitter(0, -3, 3)), 18)
+            return
+        end
+    end
+end
+
+local function tpBase()
+    for _, name in ipairs({"Base", "Plot", "Home", "Pen", "Spawn", "BasePlot", "SafeZone", "SAFE"}) do
+        local o = workspace:FindFirstChild(name, true)
+        if o then
+            local part = o:IsA("BasePart") and o or o:FindFirstChildWhichIsA("BasePart", true)
+            if part then
+                local root = hrp()
+                if not root then return end
+                walkTo(Vector3.new(part.Position.X, root.Position.Y, part.Position.Z), 20)
+                return
+            end
+        end
+    end
+end
+
+-- ═══════════════════════════════════════
+--  FIRE PROMPT — slow human
+-- ═══════════════════════════════════════
+local function firePrompt(prompt)
+    if not prompt then return end
+    task.wait(0.08 + math.random() * 0.14)
+    pcall(function()
+        if fireproximityprompt then
+            fireproximityprompt(prompt)
+        else
+            prompt:InputHoldBegin()
+            task.wait(0.05 + math.random() * 0.08)
+            prompt:InputHoldEnd()
+        end
+    end)
+    task.wait(0.06 + math.random() * 0.10)
+end
+
+-- ═══════════════════════════════════════
+--  PET DETECT + FILTER
+-- ═══════════════════════════════════════
+local PetDetectCache = setmetatable({}, {__mode = "k"})
+local PET_CACHE_TTL = 12.0
+
+local function detectRarity(inst)
+    if not inst then return "Common" end
+    local now = tick()
+    local c = PetDetectCache[inst]
+    if c and now - c.t < PET_CACHE_TTL and c.r then return c.r end
+    local text = (inst.Name or "")
+    local a = inst:GetAttribute("Rarity") or inst:GetAttribute("rarity")
+    if a then text = text .. " " .. tostring(a) end
+    for _, d in ipairs(inst:GetChildren()) do
+        if d:IsA("StringValue") or d:IsA("TextLabel") then
+            text = text .. " " .. tostring(d.Text or d.Value or "")
+        end
+    end
+    text = text:lower()
+    local order = {"divine","eternal","secret","cosmic","mythic","legendary","epic","rare","uncommon","common"}
+    local map = {divine="Divine",eternal="Eternal",secret="Secret",cosmic="Cosmic",mythic="Mythic",
+                 legendary="Legendary",epic="Epic",rare="Rare",uncommon="Uncommon",common="Common"}
+    local result = "Common"
+    for _, k in ipairs(order) do if text:find(k, 1, true) then result = map[k]; break end end
+    c = c or {}; c.t = now; c.r = result; PetDetectCache[inst] = c
+    return result
+end
+
+local function detectPetName(inst)
+    if not inst then return nil end
+    local now = tick()
+    local c = PetDetectCache[inst]
+    if c and now - c.t < PET_CACHE_TTL and c.pet ~= nil then return c.pet or nil end
+    local text = tostring(inst.Name or "")
+    local a, b = inst:GetAttribute("PetName"), inst:GetAttribute("Name")
+    if a then text = text .. " " .. tostring(a) end
+    if b then text = text .. " " .. tostring(b) end
+    for _, d in ipairs(inst:GetChildren()) do
+        if d:IsA("StringValue") or d:IsA("TextLabel") then
+            text = text .. " " .. tostring(d.Text or d.Value or "")
+        end
+    end
+    text = text:lower()
+    local best, bestLen = nil, 0
+    for _, pet in ipairs(S.PetCatalog) do
+        local key = pet.n:lower()
+        if #key > bestLen and text:find(key, 1, true) then best, bestLen = pet.n, #key end
+    end
+    c = c or {}; c.t = now; c.pet = best or false; PetDetectCache[inst] = c
+    return best
+end
+
+local function isAllowed(rarity, petName)
+    rarity = rarity or "Common"
+    if S.BlacklistRarity[rarity] then return false end
+    if petName and S.PetBlacklist[petName:lower()] then return false end
+    if petName and S.PetWhitelist[petName:lower()] then return true end
+    return S.WhitelistRarity[rarity] == true
+end
+
+-- ═══════════════════════════════════════
+--  EGG SCAN
+-- ═══════════════════════════════════════
+local EggPromptCache = {t = 0, list = {}}
+local _eggNextScan = 0
+
+local function _anyFeatureActive()
+    return S.AutoSteal or S.AutoHatch or S.AutoPlace or S.AutoIndex or S.EggESP
+end
+
+local function collectEggPrompts(force)
+    local now = tick()
+    if not force and not _anyFeatureActive() then return EggPromptCache.list end
+    if not force and now < _eggNextScan then return EggPromptCache.list end
+    local list = {}
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("ProximityPrompt") then
+            local n = (v.Name .. " " .. (v.Parent and v.Parent.Name or "")):lower()
+            if n:find("egg", 1, true) or n:find("steal", 1, true)
+               or n:find("grab", 1, true) or n:find("pick", 1, true) or n:find("take", 1, true) then
+                local obj = v.Parent or v
+                table.insert(list, {prompt = v, rarity = detectRarity(obj), parent = v.Parent, pet = detectPetName(obj)})
+            end
+        end
+    end
+    for i = #list, 2, -1 do
+        local j = math.random(i)
+        list[i], list[j] = list[j], list[i]
+    end
+    _eggNextScan = now + 8.0 + math.random() * 4.0
+    EggPromptCache.t = now
+    EggPromptCache.list = list
+    return list
+end
+
+local function nearestAllowedEgg()
+    local root = hrp()
+    if not root then return nil end
+    local best, dist = nil, math.huge
+    for _, e in ipairs(collectEggPrompts()) do
+        if isAllowed(e.rarity, e.pet) then
+            local part = e.parent
+            local pos
+            if part and part:IsA("BasePart") then pos = part.Position
+            elseif part and part:IsA("Model") then
+                local pp = part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")
+                if pp then pos = pp.Position end
+            end
+            if pos then
+                local d = (pos - root.Position).Magnitude
+                if d < dist then best, dist = e, d end
+            end
+        end
+    end
+    return best
+end
+
+-- ═══════════════════════════════════════
+--  ACTIONS
+-- ═══════════════════════════════════════
+local function dropEgg()
+    pcall(function()
+        local h = humanoid()
+        if h then h:UnequipTools() end
+    end)
+    local root = hrp()
+    if not root then return false end
+    for _, p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("ProximityPrompt") then
+            local n = (p.Name .. " " .. (p.Parent and p.Parent.Name or "")):lower()
+            if n:find("drop", 1, true) or n:find("throw", 1, true) or n:find("release", 1, true) then
+                local part = p.Parent
+                local pos = part and part:IsA("BasePart") and part.Position
+                if pos and (pos - root.Position).Magnitude <= 18 then
+                    firePrompt(p)
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function tryPlace()
+    for _, p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("ProximityPrompt") then
+            local n = (p.Name .. " " .. (p.Parent and p.Parent.Name or "")):lower()
+            if n:find("place") or n:find("pen") or n:find("insert") or n:find("put") then
+                firePrompt(p)
+            end
+        end
+    end
+end
+
+local function tryHatch()
+    for _, p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("ProximityPrompt") then
+            local n = (p.Name .. " " .. (p.Parent and p.Parent.Name or "")):lower()
+            if n:find("hatch") or n:find("open") then firePrompt(p) end
+        end
+    end
+end
+
+local function trySell()
+    for _, p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("ProximityPrompt") then
+            local n = (p.Name .. " " .. (p.Parent and p.Parent.Name or "")):lower()
+            if n:find("sell") then firePrompt(p) end
+        end
+    end
+end
+
+local function tryMutation()
+    for _, t in ipairs(LP.Backpack:GetChildren()) do
+        local n = t.Name:lower()
+        if n:find("scramble") or n:find("mutation") or n:find("mutate") or n:find("serum") or n:find("essence") then
+            pcall(function()
+                humanoid():EquipTool(t)
+                acWait(0.15)
+                t:Activate()
+            end)
+        end
+    end
+end
+
+local function upgradeTreadmill()
+    for _, p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("ProximityPrompt") then
+            local n = (p.Name .. " " .. (p.Parent and p.Parent.Name or "")):lower()
+            if (n:find("treadmill") or n:find("tread")) and (n:find("upgrade") or n:find("buy") or n:find("level")) then
+                firePrompt(p)
+            end
+        end
+    end
+end
+
+local function upgradePlot()
+    for _, p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("ProximityPrompt") then
+            local n = (p.Name .. " " .. (p.Parent and p.Parent.Name or "")):lower()
+            if (n:find("plot") or n:find("pen") or n:find("base")) and (n:find("upgrade") or n:find("buy")) then
+                firePrompt(p)
+            end
+        end
+    end
+end
+
+local function farmTreadmill()
+    if not S.AutoTreadmill or S._Stealing then stopMove(); return false end
+    local root, hum = hrp(), humanoid()
+    if not root or not hum then return false end
+    local tm, bestDist = nil, math.huge
+    for _, v in ipairs(workspace:GetDescendants()) do
+        local n = v.Name:lower()
+        if n:find("treadmill", 1, true) or n:find("tread", 1, true) then
+            local part = v:IsA("BasePart") and v
+                       or (v:IsA("Model") and (v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")))
+            if part then
+                local d = (part.Position - root.Position).Magnitude
+                if d < bestDist then tm, bestDist = part, d end
+            end
+        end
+    end
+    if not tm then return false end
+    if bestDist > 8 then
+        acWalkSpeed(hum, 15)
+        pcall(function() hum:MoveTo(tm.Position) end)
+    else
+        acWalkSpeed(hum, 15)
+        pcall(function() hum:Move(Vector3.new(1, 0, 0), true) end)
+    end
+    return true
+end
+
+-- ═══════════════════════════════════════
+--  STEAL CORE — pure WalkDrop (Ghost)
+-- ═══════════════════════════════════════
+S._Stealing = false
+
+local function doStealOnce()
+    if S._Stealing then return false end
+    S._Stealing = true
+    local ok, err = pcall(function()
+        local egg = nearestAllowedEgg()
+        if not egg then notify("No allowed egg"); return end
+
+        local part = egg.parent
+        local cf
+        if part:IsA("BasePart") then cf = part.CFrame
+        elseif part:IsA("Model") then
+            local pp = part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")
+            if pp then cf = pp.CFrame end
+        end
+        if not cf then return end
+
+        local root = hrp()
+        -- pure walk approach
+        walkTo(Vector3.new(
+            cf.X + jitter(0, -0.8, 0.8),
+            root and root.Position.Y or cf.Y,
+            cf.Z + jitter(0, -0.8, 0.8)
+        ), 18)
+        acWait(0.28)
+        firePrompt(egg.prompt)
+        notify("Steal → " .. (egg.pet or egg.rarity))
+
+        if S.WebhookOnSteal or (S.WebhookOnRare and
+           (egg.rarity == "Secret" or egg.rarity == "Eternal" or egg.rarity == "Divine")) then
+            webhook("Egg Stolen", "**Rarity:** " .. egg.rarity .. "\n**Pet:** " .. (egg.pet or "?")
+                    .. "\n**Player:** " .. LP.Name, 3066993)
+        end
+        acWait(jitter(0.40, 0.15, 0.25))
+
+        -- walk to lake / safe, drop, walk back
+        tpLake()
+        acWait(jitter(0.35, 0.12, 0.20))
+        dropEgg()
+        acWait(jitter(0.45, 0.15, 0.25))
+
+        local egg2 = nearestAllowedEgg()
+        if egg2 and egg2.parent then
+            local p2 = egg2.parent
+            local cf2 = p2:IsA("BasePart") and p2.CFrame
+                       or (p2.PrimaryPart and p2.PrimaryPart.CFrame)
+                       or (p2:FindFirstChildWhichIsA("BasePart") and p2:FindFirstChildWhichIsA("BasePart").CFrame)
+            if cf2 then
+                local r2 = hrp()
+                walkTo(Vector3.new(
+                    cf2.X + jitter(0, -0.6, 0.6),
+                    r2 and r2.Position.Y or cf2.Y,
+                    cf2.Z + jitter(0, -0.6, 0.6)
+                ), 16)
+                acWait(0.22)
+                firePrompt(egg2.prompt)
+                notify("Steal2 → " .. (egg2.pet or egg2.rarity))
+            end
+        end
+
+        if S.AutoPlace then
+            acWait(jitter(0.30, 0.10, 0.18))
+            tpBase()
+            acWait(0.35)
+            tryPlace()
+        end
+    end)
+    S._Stealing = false
+    if not ok then warn("[A6 Ghost] steal err:", err) end
+    return true
+end
+
+-- ═══════════════════════════════════════
+--  SCHEDULER — slower
+-- ═══════════════════════════════════════
+local _prioLastRun = {}
+local _auxNext = {}
+
+local function _priorityEnabled(label)
+    local key = S.FeaturePriorityKey[label]
+    return key and S[key] == true
+end
+local function _priorityIndex(label)
+    for i, v in ipairs(S.FeaturePriority) do if v == label then return i end end
+    return 99
+end
+local function _runPriorityFeature(label)
+    local key = S.FeaturePriorityKey[label]
+    if not key then return end
+    _prioLastRun[key] = os.clock()
+    if key == "AutoSteal" then if not S._Stealing then pcall(doStealOnce) end
+    elseif key == "AutoPlace" then pcall(tryPlace)
+    elseif key == "AutoHatch" then pcall(tryHatch)
+    elseif key == "AutoIndex" then if not S._Stealing then pcall(doStealOnce) end
+    elseif key == "AutoTreadmill" then
+        if S.AutoTreadmill and not S._Stealing then pcall(farmTreadmill) else stopMove() end
+    end
+end
+
+task.spawn(function()
+    task.wait(2.0 + math.random() * 2.0)
+    while true do
+        local anyOn = S.AutoSteal or S.AutoPlace or S.AutoHatch or S.AutoIndex
+            or S.AutoTreadmill or S.AutoSell or S.AutoMutation
+            or S.AutoUpgradeTreadmill or S.AutoUpgradePlot
+        if not anyOn then task.wait(2.5 + math.random() * 2.0); continue end
+        task.wait(0.25 + math.random() * 0.25)
+        local now = os.clock()
+        local bestLabel, bestScore = nil, -math.huge
+        for _, label in ipairs(S.FeaturePriority) do
+            local key = S.FeaturePriorityKey[label]
+            if key and _priorityEnabled(label) then
+                local interval = (S.FeaturePriorityInterval[key] or 2.0) * (0.90 + math.random() * 0.40)
+                local age = now - (_prioLastRun[key] or 0)
+                if age >= interval then
+                    local score = age * 10 - _priorityIndex(label)
+                    if score > bestScore then bestScore, bestLabel = score, label end
+                end
+            end
+        end
+        if bestLabel then _runPriorityFeature(bestLabel) end
+        local function aux(key, enabled, base, fn)
+            if not enabled then return end
+            local t = _auxNext[key] or 0
+            if now >= t then
+                _auxNext[key] = now + base * (0.90 + math.random() * 0.50)
+                pcall(fn)
+            end
+        end
+        aux("sell",   S.AutoSell,            6.0, trySell)
+        aux("mut",    S.AutoMutation,         5.0, tryMutation)
+        aux("upTM",   S.AutoUpgradeTreadmill, 11.0, upgradeTreadmill)
+        aux("upPlot", S.AutoUpgradePlot,      11.0, upgradePlot)
+    end
+end)
+
+task.spawn(function()
+    task.wait(1.2 + math.random() * 0.6)
+    while true do
+        if not S.SpeedBoost and not S.JumpBoost and not S.AntiRagdoll then
+            task.wait(2.5 + math.random() * 2.0); continue
+        end
+        local hum = humanoid()
+        if hum then
+            protect(hum)
+            if S.SpeedBoost then
+                pcall(function() hum.WalkSpeed = math.clamp(S.WalkSpeed, 14, 18) end)
+            end
+            if S.JumpBoost then
+                pcall(function()
+                    hum.JumpPower = S.JumpPower
+                    hum.UseJumpPower = true
+                end)
+            end
+        end
+        if S.AntiRagdoll then
+            pcall(function()
+                local c = LP.Character
+                if not c then return end
+                local h = c:FindFirstChildOfClass("Humanoid")
+                if h and h:GetState() == Enum.HumanoidStateType.Physics then
+                    h:ChangeState(Enum.HumanoidStateType.Running)
+                end
+            end)
+        end
+        task.wait(0.28 + math.random() * 0.20)
+    end
+end)
+
+task.spawn(function()
+    while task.wait(30 + math.random() * 25) do
+        if S.AntiAFK then
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end
+    end
+end)
+
+UIS.JumpRequest:Connect(function()
+    if S.InfJump then
+        local hum = humanoid()
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- ═══════════════════════════════════════
+--  ESP
+-- ═══════════════════════════════════════
+local espFolder = Instance.new("Folder")
+espFolder.Name = "A6SAE_ESP"
+pcall(function() espFolder.Parent = game:GetService("CoreGui") end)
+
+task.spawn(function()
+    while true do
+        if not S.EggESP then
+            for _, c in ipairs(espFolder:GetChildren()) do c:Destroy() end
+            task.wait(3.5 + math.random() * 2.0); continue
+        end
+        task.wait(2.0 + math.random() * 1.5)
+        for _, c in ipairs(espFolder:GetChildren()) do c:Destroy() end
+        for _, e in ipairs(collectEggPrompts()) do
+            local part = e.parent and (e.parent:IsA("BasePart") and e.parent
+                          or e.parent:FindFirstChildWhichIsA("BasePart"))
+            if part then
+                local bb = Instance.new("BillboardGui")
+                bb.Size = UDim2.new(0, 140, 0, 28)
+                bb.AlwaysOnTop = true
+                bb.Adornee = part
+                bb.Parent = espFolder
+                local tl = Instance.new("TextLabel", bb)
+                tl.Size = UDim2.new(1, 0, 1, 0)
+                tl.BackgroundTransparency = 1
+                local ok = isAllowed(e.rarity, e.pet)
+                tl.Text = (e.pet and (e.pet .. " · ") or "") .. e.rarity .. (ok and " ✓" or " ✗")
+                tl.TextColor3 = ok and Color3.fromRGB(80, 255, 120) or Color3.fromRGB(255, 100, 100)
+                tl.Font = Enum.Font.GothamBold
+                tl.TextSize = 11
+                tl.TextStrokeTransparency = 0.4
+            end
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════
+--  UI — minimal
+-- ═══════════════════════════════════════
+local function build()
+    pcall(function()
+        local old = game:GetService("CoreGui"):FindFirstChild("A6HubSAE")
+        if old then old:Destroy() end
+    end)
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "A6HubSAE"
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() sg.Parent = game:GetService("CoreGui") end)
+    if not sg.Parent then sg.Parent = LP:WaitForChild("PlayerGui") end
+
+    local openBtn = Instance.new("TextButton", sg)
+    openBtn.Size = UDim2.new(0, 44, 0, 44)
+    openBtn.Position = UDim2.new(0, 12, 0.42, 0)
+    openBtn.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+    openBtn.Text = "A6"
+    openBtn.Font = Enum.Font.GothamBold
+    openBtn.TextSize = 14
+    openBtn.TextColor3 = Color3.fromRGB(0, 200, 160)
+    openBtn.AutoButtonColor = true
+    Instance.new("UICorner", openBtn).CornerRadius = UDim.new(0, 10)
+
+    local main = Instance.new("Frame", sg)
+    main.Name = "Main"
+    main.Size = UDim2.new(0, 320, 0, 420)
+    main.Position = UDim2.new(0.5, -160, 0.5, -210)
+    main.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+    main.BackgroundTransparency = 0.05
+    main.Visible = true
+    main.Active = true
+    main.Draggable = true
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+    local titleL = Instance.new("TextLabel", main)
+    titleL.BackgroundTransparency = 1
+    titleL.Size = UDim2.new(1, -46, 0, 24)
+    titleL.Position = UDim2.new(0, 12, 0, 6)
+    titleL.Font = Enum.Font.GothamBold
+    titleL.TextSize = 13
+    titleL.TextXAlignment = Enum.TextXAlignment.Left
+    titleL.TextColor3 = Color3.fromRGB(230, 230, 235)
+    titleL.Text = "A6 Hub · Ghost · BAC-4511"
+
+    local closeBtn = Instance.new("TextButton", main)
+    closeBtn.Size = UDim2.new(0, 28, 0, 22)
+    closeBtn.Position = UDim2.new(1, -34, 0, 5)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(60, 28, 28)
+    closeBtn.Text = "×"
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 16
+    closeBtn.TextColor3 = Color3.fromRGB(255, 160, 160)
+    closeBtn.BorderSizePixel = 0
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+    closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
+    openBtn.MouseButton1Click:Connect(function() main.Visible = not main.Visible end)
+
+    local tabBarFrame = Instance.new("ScrollingFrame", main)
+    tabBarFrame.Size = UDim2.new(1, -8, 0, 28)
+    tabBarFrame.Position = UDim2.new(0, 4, 0, 32)
+    tabBarFrame.BackgroundTransparency = 1
+    tabBarFrame.ScrollBarThickness = 0
+    tabBarFrame.CanvasSize = UDim2.new(0, 0, 1, 0)
+    tabBarFrame.AutomaticCanvasSize = Enum.AutomaticSize.X
+    tabBarFrame.ScrollingDirection = Enum.ScrollingDirection.X
+    local tabLay = Instance.new("UIListLayout", tabBarFrame)
+    tabLay.FillDirection = Enum.FillDirection.Horizontal
+    tabLay.Padding = UDim.new(0, 4)
+
+    local TABS = {"Steal", "Farm", "Player", "Pet Filter", "Settings"}
+    local pages, tabBtns = {}, {}
+
+    local function show(name)
+        for n, p in pairs(pages) do p.Visible = (n == name) end
+        for n, b in pairs(tabBtns) do
+            if n == name then
+                b.BackgroundColor3 = Color3.fromRGB(0, 130, 100)
+                b.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                b.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+                b.TextColor3 = Color3.fromRGB(160, 165, 180)
+            end
+        end
+    end
+
+    for _, name in ipairs(TABS) do
+        local b = Instance.new("TextButton", tabBarFrame)
+        b.Size = UDim2.new(0, 70, 0, 24)
+        b.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 10
+        b.TextColor3 = Color3.fromRGB(160, 165, 180)
+        b.Text = name
+        b.BorderSizePixel = 0
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        tabBtns[name] = b
+        b.MouseButton1Click:Connect(function() show(name) end)
+        local page = Instance.new("ScrollingFrame", main)
+        page.BackgroundTransparency = 1
+        page.Size = UDim2.new(1, -10, 1, -68)
+        page.Position = UDim2.new(0, 5, 0, 64)
+        page.ScrollBarThickness = 3
+        page.ScrollBarImageColor3 = Color3.fromRGB(0, 130, 100)
+        page.BorderSizePixel = 0
+        page.Visible = false
+        page.CanvasSize = UDim2.new(0, 0, 0, 0)
+        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        local lay = Instance.new("UIListLayout", page)
+        lay.Padding = UDim.new(0, 5)
+        pages[name] = page
+    end
+
+    local function section(page, text)
+        local l = Instance.new("TextLabel", page)
+        l.BackgroundTransparency = 1
+        l.Size = UDim2.new(1, 0, 0, 18)
+        l.Font = Enum.Font.GothamBold
+        l.TextSize = 11
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.TextColor3 = Color3.fromRGB(0, 190, 150)
+        l.Text = "  " .. text
+    end
+    local function tip(page, text)
+        local l = Instance.new("TextLabel", page)
+        l.BackgroundTransparency = 1
+        l.Size = UDim2.new(1, 0, 0, 26)
+        l.Font = Enum.Font.Gotham
+        l.TextSize = 10
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.TextWrapped = true
+        l.TextColor3 = Color3.fromRGB(110, 114, 130)
+        l.Text = "  " .. text
+    end
+    local function toggleRow(page, label, key, defaultOn)
+        if defaultOn ~= nil and S[key] == nil then S[key] = defaultOn end
+        local row = Instance.new("Frame", page)
+        row.Size = UDim2.new(1, 0, 0, 32)
+        row.BackgroundColor3 = Color3.fromRGB(24, 26, 34)
+        row.BorderSizePixel = 0
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
+        local lab = Instance.new("TextLabel", row)
+        lab.BackgroundTransparency = 1
+        lab.Size = UDim2.new(1, -54, 1, 0)
+        lab.Position = UDim2.new(0, 10, 0, 0)
+        lab.Font = Enum.Font.Gotham
+        lab.TextSize = 12
+        lab.TextXAlignment = Enum.TextXAlignment.Left
+        lab.TextColor3 = Color3.fromRGB(218, 220, 230)
+        lab.Text = label
+        local sw = Instance.new("TextButton", row)
+        sw.Size = UDim2.new(0, 40, 0, 22)
+        sw.Position = UDim2.new(1, -46, 0.5, -11)
+        sw.Text = ""
+        sw.BorderSizePixel = 0
+        Instance.new("UICorner", sw).CornerRadius = UDim.new(1, 0)
+        local knob = Instance.new("Frame", sw)
+        knob.Size = UDim2.new(0, 16, 0, 16)
+        knob.BorderSizePixel = 0
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+        local function paint()
+            if S[key] then
+                sw.BackgroundColor3 = Color3.fromRGB(0, 150, 110)
+                knob.Position = UDim2.new(1, -18, 0.5, -8)
+                knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                sw.BackgroundColor3 = Color3.fromRGB(44, 46, 58)
+                knob.Position = UDim2.new(0, 3, 0.5, -8)
+                knob.BackgroundColor3 = Color3.fromRGB(150, 152, 165)
+            end
+        end
+        paint()
+        sw.MouseButton1Click:Connect(function()
+            S[key] = not S[key]
+            if key == "AutoTreadmill" and not S[key] then stopMove() end
+            paint()
+            notify(label .. (S[key] and " ON" or " OFF"))
+        end)
+    end
+    local function actionBtn(page, text, color, cb)
+        local b = Instance.new("TextButton", page)
+        b.Size = UDim2.new(1, 0, 0, 30)
+        b.BackgroundColor3 = color or Color3.fromRGB(0, 100, 85)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 12
+        b.TextColor3 = Color3.fromRGB(255, 255, 255)
+        b.Text = text
+        b.BorderSizePixel = 0
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+        b.MouseButton1Click:Connect(cb)
+    end
+
+    -- STEAL
+    section(pages["Steal"], "Ghost Steal · pure Walk")
+    tip(pages["Steal"], "Không Tween · không HipHeight · delay dài · tốc độ thấp")
+    toggleRow(pages["Steal"], "Auto Steal Egg", "AutoSteal")
+    toggleRow(pages["Steal"], "Auto Place After Steal", "AutoPlace")
+    actionBtn(pages["Steal"], "Steal Once (Walk)", Color3.fromRGB(0, 100, 85), function()
+        pcall(doStealOnce)
+    end)
+    actionBtn(pages["Steal"], "TP Base", Color3.fromRGB(36, 40, 50), function()
+        tpBase(); notify("TP Base")
+    end)
+    section(pages["Steal"], "Rarity Whitelist")
+    for _, r in ipairs({"Legendary","Mythic","Cosmic","Secret","Eternal","Divine"}) do
+        local key = "WLR_" .. r
+        S[key] = S.WhitelistRarity[r]
+        toggleRow(pages["Steal"], "WL · " .. r, key)
+        local _r = r
+        task.spawn(function()
+            while task.wait(0.6) do S.WhitelistRarity[_r] = S["WLR_" .. _r] end
+        end)
+    end
+
+    -- FARM
+    section(pages["Farm"], "Farm")
+    toggleRow(pages["Farm"], "Auto Treadmill", "AutoTreadmill")
+    toggleRow(pages["Farm"], "Auto Hatch", "AutoHatch")
+    toggleRow(pages["Farm"], "Auto Sell", "AutoSell")
+    toggleRow(pages["Farm"], "Auto Mutation", "AutoMutation")
+    toggleRow(pages["Farm"], "Auto Upgrade Treadmill", "AutoUpgradeTreadmill")
+    toggleRow(pages["Farm"], "Auto Upgrade Plot", "AutoUpgradePlot")
+    toggleRow(pages["Farm"], "Auto Index", "AutoIndex")
+    toggleRow(pages["Farm"], "Egg ESP", "EggESP")
+
+    -- PLAYER
+    section(pages["Player"], "Player")
+    toggleRow(pages["Player"], "Speed Boost (max 18)", "SpeedBoost")
+    toggleRow(pages["Player"], "Jump Boost", "JumpBoost")
+    toggleRow(pages["Player"], "Anti Ragdoll", "AntiRagdoll")
+    toggleRow(pages["Player"], "Anti AFK", "AntiAFK")
+    tip(pages["Player"], "WalkSpeed locked ≤ 18 for BAC-4511")
+
+    -- PET FILTER
+    section(pages["Pet Filter"], "Pet Filter")
+    tip(pages["Pet Filter"], "WL / BL normal pets only")
+    local search = Instance.new("TextBox", pages["Pet Filter"])
+    search.Size = UDim2.new(1, 0, 0, 28)
+    search.BackgroundColor3 = Color3.fromRGB(26, 28, 36)
+    search.Font = Enum.Font.Gotham
+    search.TextSize = 12
+    search.TextColor3 = Color3.fromRGB(218, 220, 230)
+    search.PlaceholderText = "Search..."
+    search.PlaceholderColor3 = Color3.fromRGB(88, 90, 108)
+    search.Text = ""
+    search.ClearTextOnFocus = false
+    search.BorderSizePixel = 0
+    Instance.new("UICorner", search).CornerRadius = UDim.new(0, 7)
+    local listHost = Instance.new("Frame", pages["Pet Filter"])
+    listHost.BackgroundTransparency = 1
+    listHost.Size = UDim2.new(1, 0, 0, 1)
+    local listLay = Instance.new("UIListLayout", listHost)
+    listLay.Padding = UDim.new(0, 3)
+    listLay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        listHost.Size = UDim2.new(1, 0, 0, math.max(1, listLay.AbsoluteContentSize.Y))
+    end)
+    local function rebuildPetList(q)
+        for _, c in ipairs(listHost:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+        q = (q or ""):lower()
+        local n = 0
+        for _, pet in ipairs(S.PetCatalog) do
+            if q == "" or pet.n:lower():find(q, 1, true) or pet.r:lower():find(q, 1, true) then
+                n = n + 1
+                if n > 50 then break end
+                local key = pet.n:lower()
+                local row = Instance.new("Frame", listHost)
+                row.Size = UDim2.new(1, 0, 0, 32)
+                row.BackgroundColor3 = Color3.fromRGB(24, 26, 34)
+                row.BorderSizePixel = 0
+                Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+                local nameL = Instance.new("TextLabel", row)
+                nameL.BackgroundTransparency = 1
+                nameL.Size = UDim2.new(0.55, 0, 1, 0)
+                nameL.Position = UDim2.new(0, 8, 0, 0)
+                nameL.Font = Enum.Font.GothamBold
+                nameL.TextSize = 11
+                nameL.TextXAlignment = Enum.TextXAlignment.Left
+                nameL.TextColor3 = Color3.fromRGB(228, 230, 240)
+                nameL.Text = pet.n .. " · " .. pet.r
+                local wlB = Instance.new("TextButton", row)
+                wlB.Size = UDim2.new(0, 32, 0, 22)
+                wlB.Position = UDim2.new(1, -72, 0.5, -11)
+                wlB.Font = Enum.Font.GothamBold
+                wlB.TextSize = 10
+                wlB.Text = "WL"
+                wlB.BorderSizePixel = 0
+                Instance.new("UICorner", wlB).CornerRadius = UDim.new(0, 5)
+                local blB = Instance.new("TextButton", row)
+                blB.Size = UDim2.new(0, 32, 0, 22)
+                blB.Position = UDim2.new(1, -36, 0.5, -11)
+                blB.Font = Enum.Font.GothamBold
+                blB.TextSize = 10
+                blB.Text = "BL"
+                blB.BorderSizePixel = 0
+                Instance.new("UICorner", blB).CornerRadius = UDim.new(0, 5)
+                local function rfr()
+                    wlB.BackgroundColor3 = S.PetWhitelist[key] and Color3.fromRGB(28, 120, 60) or Color3.fromRGB(38, 42, 54)
+                    wlB.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    blB.BackgroundColor3 = S.PetBlacklist[key] and Color3.fromRGB(120, 28, 35) or Color3.fromRGB(38, 42, 54)
+                    blB.TextColor3 = Color3.fromRGB(255, 255, 255)
+                end
+                rfr()
+                wlB.MouseButton1Click:Connect(function()
+                    S.PetWhitelist[key] = not S.PetWhitelist[key]
+                    if S.PetWhitelist[key] then S.PetBlacklist[key] = false end
+                    rfr()
+                end)
+                blB.MouseButton1Click:Connect(function()
+                    S.PetBlacklist[key] = not S.PetBlacklist[key]
+                    if S.PetBlacklist[key] then S.PetWhitelist[key] = false end
+                    rfr()
+                end)
+            end
+        end
+    end
+    rebuildPetList("")
+    search:GetPropertyChangedSignal("Text"):Connect(function()
+        task.delay(0.15, function() if search.Parent then rebuildPetList(search.Text) end end)
+    end)
+
+    -- SETTINGS
+    section(pages["Settings"], "Server")
+    actionBtn(pages["Settings"], "Rejoin", Color3.fromRGB(90, 28, 28), function()
+        TeleportService:Teleport(game.PlaceId, LP)
+    end)
+    actionBtn(pages["Settings"], "Server Hop", Color3.fromRGB(70, 40, 20), function()
+        pcall(function()
+            local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=50"
+            local data = HttpService:JSONDecode(game:HttpGet(url))
+            for _, sv in ipairs(data.data or {}) do
+                if sv.id ~= game.JobId and sv.playing < (sv.maxPlayers or 30) then
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, sv.id, LP)
+                    return
+                end
+            end
+        end)
+    end)
+    actionBtn(pages["Settings"], "Copy Discord", Color3.fromRGB(88, 101, 242), function()
+        pcall(setclipboard, DISCORD)
+        notify("Copied")
+    end)
+
+    show("Steal")
+end
+
+pcall(build)
+notify("A6 Ghost · BAC-4511 ready")
+print("[A6 SAE] Ghost BAC-4511 ready · " .. DISCORD)
